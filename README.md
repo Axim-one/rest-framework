@@ -204,13 +204,13 @@ public interface OrderRepository extends IXRepository<Long, Order> {
 
 ```properties
 # HTTP Client (rest-api module)
-x.rest.client.pool-size=200
-x.rest.client.connection-request-timeout=30
-x.rest.client.response-timeout=30
+axim.rest.client.pool-size=200
+axim.rest.client.connection-request-timeout=30
+axim.rest.client.response-timeout=30
 
 # Session (rest-api module, optional)
-x.rest.session.secret-key=your-hmac-secret
-x.rest.session.expire-days=7
+axim.rest.session.secret-key=your-hmac-secret
+axim.rest.session.expire-days=7
 ```
 
 ## Build

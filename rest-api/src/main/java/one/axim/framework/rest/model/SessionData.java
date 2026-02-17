@@ -54,7 +54,7 @@ public class SessionData {
         int nDay = DEFAULT_TOKEN_EXPIRE_DAYS;
         XRestEnvironment env = XRestEnvironment.getInstance();
         if (env != null) {
-            Integer configured = env.getIntValue("x.rest.session.token-expire-days");
+            Integer configured = env.getIntValue("axim.rest.session.token-expire-days");
             if (configured != null) {
                 nDay = configured;
             }

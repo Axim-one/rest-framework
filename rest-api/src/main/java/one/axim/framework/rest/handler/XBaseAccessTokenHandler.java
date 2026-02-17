@@ -95,6 +95,6 @@ public class XBaseAccessTokenHandler implements XAccessTokenParseHandler {
         if (env == null) {
             return null;
         }
-        return env.getValue("x.rest.session.secret-key");
+        return env.getValue("axim.rest.session.secret-key");
     }
 }

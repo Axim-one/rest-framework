@@ -23,13 +23,13 @@ import one.axim.framework.rest.proxy.XWebClientFactory;
 @Configuration
 public class XRestConfiguration {
 
-    @Value("${x.rest.client.pool-size:200}")
+    @Value("${axim.rest.client.pool-size:200}")
     private int maxThreadPoolCount;
 
-    @Value("${x.rest.client.connection-request-timeout:30}")
+    @Value("${axim.rest.client.connection-request-timeout:30}")
     private int connectionRequestTimeoutSeconds;
 
-    @Value("${x.rest.client.response-timeout:30}")
+    @Value("${axim.rest.client.response-timeout:30}")
     private int responseTimeoutSeconds;
 
     @Bean
@@ -67,7 +67,7 @@ public class XRestConfiguration {
 
     @Bean(name = "xWebClientFactory")
     public XWebClientFactory xWebClientFactory(RestClient restClient,
-                                                @Value("${x.rest.debug:false}") boolean isDebug) {
+                                                @Value("${axim.rest.debug:false}") boolean isDebug) {
         return new XWebClientFactory(restClient, isDebug);
     }
 

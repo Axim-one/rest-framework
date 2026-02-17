@@ -48,8 +48,8 @@ public class XExceptionHandler {
 
         String[] profiles = environment.getActiveProfiles();
 
-        defaultLanguageCode = environment.getProperty("x.rest.message.default-language", "ko-KR");
-        languageHeader = environment.getProperty("x.rest.message.language-header", "Accept-Language");
+        defaultLanguageCode = environment.getProperty("axim.rest.message.default-language", "ko-KR");
+        languageHeader = environment.getProperty("axim.rest.message.language-header", "Accept-Language");
 
         boolean isProd = false;
         if (profiles != null) {

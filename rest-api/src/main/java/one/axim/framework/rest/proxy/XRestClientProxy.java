@@ -30,10 +30,10 @@ public class XRestClientProxy implements InvocationHandler {
     @Autowired
     private RestTemplate restTemplate;
 
-    @Value("${x.rest.gateway.host:@null}")
+    @Value("${axim.rest.gateway.host:@null}")
     private String gatewayHost;
 
-    @Value("${x.rest.debug:false}")
+    @Value("${axim.rest.debug:false}")
     private boolean isDebug;
 
     private final ConcurrentHashMap<String, XRestClient> clientCache = new ConcurrentHashMap<>();

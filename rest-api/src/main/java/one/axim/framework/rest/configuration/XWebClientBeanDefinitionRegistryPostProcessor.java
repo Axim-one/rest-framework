@@ -29,7 +29,7 @@ public class XWebClientBeanDefinitionRegistryPostProcessor
     @Override
     public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {
         Map<String, String> services = Binder.get(environment)
-                .bind("x.web-client.services", Bindable.mapOf(String.class, String.class))
+                .bind("axim.web-client.services", Bindable.mapOf(String.class, String.class))
                 .orElse(Map.of());
 
         services.forEach((name, baseUrl) -> {

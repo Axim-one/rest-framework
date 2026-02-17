@@ -323,13 +323,13 @@ spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 mybatis.config-location=classpath:mybatis-config.xml
 
 # Framework HTTP Client (optional)
-x.rest.client.pool-size=200
-x.rest.client.connection-request-timeout=30
-x.rest.client.response-timeout=30
+axim.rest.client.pool-size=200
+axim.rest.client.connection-request-timeout=30
+axim.rest.client.response-timeout=30
 
 # Framework Session (optional)
-x.rest.session.secret-key=your-hmac-secret-key
-x.rest.session.expire-days=7
+axim.rest.session.secret-key=your-hmac-secret-key
+axim.rest.session.expire-days=7
 ```
 
 ### 5.3. mybatis-config.xml
