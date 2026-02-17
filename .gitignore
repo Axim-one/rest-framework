@@ -44,3 +44,5 @@ bin/
 ### Tool configs ###
 .claude/
 .cursor/
+CLAUDE.md
+GEMINI.md

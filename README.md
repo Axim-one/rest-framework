@@ -1,4 +1,4 @@
-# YH REST Framework
+# Axim REST Framework
 
 Spring Boot + MyBatis 기반의 경량 REST 프레임워크. 어노테이션 기반 엔티티 매핑과 Repository 패턴으로 MyBatis의 SQL 제어력을 유지하면서 보일러플레이트를 최소화합니다.
 
@@ -30,6 +30,56 @@ rest-framework/
 - Spring Boot 3.3+
 - MySQL 5.7+ / 8.0+
 - MyBatis 3.0+
+
+## Installation
+
+[![](https://jitpack.io/v/Axim-one/rest-framework.svg)](https://jitpack.io/#Axim-one/rest-framework)
+
+### Gradle
+
+```gradle
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation 'com.github.Axim-one.rest-framework:core:1.0.0'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.0.0'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.0.0'
+}
+```
+
+### Maven
+
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>com.github.Axim-one.rest-framework</groupId>
+        <artifactId>core</artifactId>
+        <version>1.0.0</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.Axim-one.rest-framework</groupId>
+        <artifactId>rest-api</artifactId>
+        <version>1.0.0</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.Axim-one.rest-framework</groupId>
+        <artifactId>mybatis</artifactId>
+        <version>1.0.0</version>
+    </dependency>
+</dependencies>
+```
+
+> 필요한 모듈만 선택적으로 추가할 수 있습니다. `rest-api`는 `core`에 의존하므로, `rest-api`만 추가해도 `core`가 함께 포함됩니다.
 
 ## Quick Start
 
@@ -172,8 +222,6 @@ x.rest.session.expire-days=7
 ## Documentation
 
 - [Framework Usage Guide](framework-guide.md) - 상세 사용법
-- [AI Guide](CLAUDE.md) - 아키텍처, 내부 구조, 캐싱
-- [TODO](TODO.md) - 개선 예정 항목
 
 ## Architecture
 
