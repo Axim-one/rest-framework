@@ -55,6 +55,10 @@ subprojects {
 configure(subprojects.findAll { it.name != 'demo' }) {
     apply plugin: 'maven-publish'
 
+    jar {
+        archiveClassifier = ''
+    }
+
     publishing {
         publications {
             mavenJava(MavenPublication) {
