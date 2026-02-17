@@ -1,0 +1,5 @@
+rootProject.name = 'rest-framework'
+include 'core'
+include 'rest-api'
+include 'mybatis'
+include 'demo'

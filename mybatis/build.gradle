@@ -1,0 +1,30 @@
+apply plugin: 'java-library'
+
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+    manifest {
+        attributes('Implementation-Title': project.name,
+                'Implementation-Version': project.version)
+    }
+}
+
+dependencies {
+    implementation project(':core')
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-json'
+
+    // Validation
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    runtimeOnly 'com.mysql:mysql-connector-j'
+
+    api "org.mybatis.spring.boot:mybatis-spring-boot-starter:${mybatisStarterVersion}"
+
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

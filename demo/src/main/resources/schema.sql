@@ -1,0 +1,11 @@
+CREATE DATABASE IF NOT EXISTS demo_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+USE demo_db;
+
+CREATE TABLE IF NOT EXISTS users (
+    id    INT          NOT NULL AUTO_INCREMENT,
+    name  VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
