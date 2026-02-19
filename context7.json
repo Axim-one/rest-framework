@@ -1,6 +1,7 @@
 {
   "projectTitle": "Axim REST Framework",
   "description": "Lightweight Spring Boot + MyBatis REST framework with annotation-based entity mapping, repository proxy pattern, query derivation, pagination, and declarative REST client.",
+  "folders": ["docs"],
   "excludeFolders": ["build", ".gradle", ".idea", "gradle"],
   "excludeFiles": ["gradlew", "gradlew.bat", "GEMINI.md", "TODO.md"],
   "rules": [
