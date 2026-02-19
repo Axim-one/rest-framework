@@ -221,7 +221,49 @@ axim.rest.session.expire-days=7
 
 ## Documentation
 
-- [Framework Usage Guide](framework-guide.md) - 상세 사용법
+- [Framework Usage Guide](docs/guide.md) - 상세 사용법 (English)
+
+### AI 도구에서 Context7으로 사용하기
+
+이 프레임워크는 [Context7](https://context7.com)에 등록되어 있어, AI 코딩 도구(Claude Code, Cursor 등)에서 최신 API 문서를 자동으로 참조할 수 있습니다.
+
+**Claude Code** — MCP 서버 설정 (`~/.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    }
+  }
+}
+```
+
+**Cursor** — MCP 서버 설정 (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    }
+  }
+}
+```
+
+설정 후 프롬프트에 `use context7`을 추가하면 AI가 자동으로 최신 문서를 참조합니다:
+
+```
+UserRepository에서 페이지네이션 조회를 구현해줘. use context7
+```
+
+또는 라이브러리 ID를 직접 지정할 수도 있습니다:
+
+```
+/axim-one/rest-framework 문서를 참고해서 @XEntity와 @XRepository 설정 예제를 보여줘. use context7
+```
 
 ## Architecture
 
