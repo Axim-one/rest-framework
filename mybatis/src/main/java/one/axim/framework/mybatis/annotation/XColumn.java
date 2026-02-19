@@ -7,44 +7,70 @@ import static java.lang.annotation.ElementType.FIELD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
- * Created by dudgh on 2017. 5. 27..
+ * Maps an entity field to a database column with fine-grained control over column behavior.
+ *
+ * <p>If this annotation is not present on a field, the framework automatically maps it
+ * using camelCase-to-snake_case name conversion with default settings.</p>
+ *
+ * <h3>Usage</h3>
+ * <pre>{@code
+ * // Primary key with auto-increment
+ * @XColumn(isPrimaryKey = true, isAutoIncrement = true)
+ * private Long id;
+ *
+ * // Custom column name mapping
+ * @XColumn("user_email_address")
+ * private String email;
+ *
+ * // Read-only column (excluded from INSERT and UPDATE)
+ * @XColumn(insert = false, update = false)
+ * private LocalDateTime createdAt;
+ *
+ * // Excluded from UPDATE only
+ * @XColumn(update = false)
+ * private String createdBy;
+ * }</pre>
+ *
+ * @see XEntity
+ * @see XDefaultValue
+ * @see XIgnoreColumn
  */
 @Target(FIELD)
 @Retention(RUNTIME)
 public @interface XColumn {
 
     /**
-     * 컬럼명 설정
+     * Column name. If empty, the field name is converted from camelCase to snake_case.
      *
-     * @return 컬럼명
+     * @return the column name
      */
     String value() default "";
 
     /**
-     * PK 여부 설정
+     * Whether this column is the primary key.
      *
-     * @return PK 여부
+     * @return {@code true} if this column is the primary key
      */
     boolean isPrimaryKey() default false;
 
     /**
-     * 업데이트 허용 여부 설정
+     * Whether this column is included in UPDATE statements.
      *
-     * @return 업데이트 허용 여부
+     * @return {@code true} if this column can be updated (default: {@code true})
      */
     boolean update() default true;
 
     /**
-     * 삽입 허용 여부 설정
+     * Whether this column is included in INSERT statements.
      *
-     * @return 삽입 허용 여부
+     * @return {@code true} if this column can be inserted (default: {@code true})
      */
     boolean insert() default true;
 
     /**
-     * Auto Increment 여부 설정
+     * Whether this column uses database auto-increment for key generation.
      *
-     * @return Auto Increment 여부
+     * @return {@code true} if the column is auto-incremented
      */
     boolean isAutoIncrement() default false;
 }

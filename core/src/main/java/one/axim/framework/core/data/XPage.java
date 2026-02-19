@@ -5,7 +5,25 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Created by dudgh on 2017. 6. 5..
+ * Pagination result container returned by repository paginated queries.
+ *
+ * <p>Contains the current page of data along with pagination metadata such as
+ * total count, page number, page size, and sort orders. Also provides a
+ * {@link #getHasNext()} helper for cursor-style iteration.</p>
+ *
+ * <h3>Usage</h3>
+ * <pre>{@code
+ * XPage<User> page = userRepository.findAll(pagination);
+ *
+ * int total     = page.getTotalCount();   // total matching rows
+ * int pageNum   = page.getPage();         // current page number
+ * List<User> rows = page.getPageRows();   // rows for this page
+ * boolean more  = page.getHasNext();      // true if more pages exist
+ * }</pre>
+ *
+ * @param <T> the entity type
+ * @see XPagination
+ * @see XOrder
  */
 public class XPage<T> {
 

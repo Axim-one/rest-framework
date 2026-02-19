@@ -5,7 +5,25 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Created by dudgh on 2017. 6. 10..
+ * Pagination request model specifying page number, page size, and sort orders.
+ *
+ * <p>Pass an {@code XPagination} instance to repository query methods
+ * (e.g., {@code findAll(XPagination)}, {@code findWhere(XPagination, Map)}) to
+ * receive an {@link XPage} result with automatic COUNT query and LIMIT/OFFSET.</p>
+ *
+ * <h3>Usage</h3>
+ * <pre>{@code
+ * XPagination pagination = new XPagination();
+ * pagination.setPage(1);
+ * pagination.setSize(20);
+ * pagination.addOrder(new XOrder("createdAt", XDirection.DESC));
+ *
+ * XPage<User> result = userRepository.findAll(pagination);
+ * }</pre>
+ *
+ * @see XPage
+ * @see XOrder
+ * @see XDirection
  */
 public class XPagination {
 

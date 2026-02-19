@@ -2,6 +2,14 @@ package one.axim.framework.core.data;
 
 import java.util.Locale;
 
+/**
+ * Sort direction for use with {@link XOrder}.
+ *
+ * <p>Supports case-insensitive parsing via {@link #fromString(String)}.</p>
+ *
+ * @see XOrder
+ * @see XPagination
+ */
 public enum XDirection {
     ASC, DESC;
 

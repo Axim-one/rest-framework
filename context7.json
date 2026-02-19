@@ -1,0 +1,16 @@
+{
+  "projectTitle": "Axim REST Framework",
+  "description": "Lightweight Spring Boot + MyBatis REST framework with annotation-based entity mapping, repository proxy pattern, query derivation, pagination, and declarative REST client.",
+  "folders": ["core", "mybatis", "rest-api", "demo"],
+  "excludeFolders": ["build", ".gradle", ".idea", "gradle"],
+  "excludeFiles": ["gradlew", "gradlew.bat"],
+  "rules": [
+    "Always use @XEntity to map entity classes to database tables",
+    "Repository interfaces must extend IXRepository<K, T> and be annotated with @XRepository",
+    "Application class requires @XRepositoryScan, @MapperScan, and @ComponentScan with framework packages",
+    "Use save() for upsert (INSERT ON DUPLICATE KEY UPDATE), insert() for INSERT only",
+    "Use modify() for selective update (non-null fields only), update() for full column update",
+    "Query derivation supports findBy, findAllBy, countBy, existsBy, deleteBy prefixes with And combination",
+    "Use XPagination with XOrder for paginated queries, returns XPage<T>"
+  ]
+}

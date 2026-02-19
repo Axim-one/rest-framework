@@ -7,38 +7,68 @@ import static java.lang.annotation.ElementType.FIELD;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
- * Created by dudgh on 2017. 5. 29..
+ * Specifies default values for INSERT and UPDATE operations on entity fields.
+ *
+ * <p>Supports four common patterns for default value handling:</p>
+ *
+ * <h3>Usage</h3>
+ * <pre>{@code
+ * // Pattern 1: Use DB DEFAULT (column omitted from INSERT)
+ * @XDefaultValue(isDBDefaultUsed = true)
+ * private String region;
+ *
+ * // Pattern 2: Literal string value on INSERT
+ * @XDefaultValue(value = "ACTIVE", isDBDefaultUsed = false)
+ * private String status;
+ * // → INSERT: VALUES(..., 'ACTIVE', ...)
+ *
+ * // Pattern 3: DB expression on INSERT
+ * @XDefaultValue(value = "NOW()", isDBValue = true, isDBDefaultUsed = false)
+ * private LocalDateTime createdAt;
+ * // → INSERT: VALUES(..., NOW(), ...)
+ *
+ * // Pattern 4: Auto-set value on UPDATE
+ * @XDefaultValue(updateValue = "NOW()", isDBValue = true)
+ * private LocalDateTime updatedAt;
+ * // → UPDATE: SET updated_at = NOW()
+ * }</pre>
+ *
+ * @see XColumn
+ * @see XEntity
  */
 @Target(FIELD)
 @Retention(RUNTIME)
 public @interface XDefaultValue {
 
     /**
-     * 컬럼의 기본 값 설정
+     * Default value to use on INSERT. Treated as a literal string unless
+     * {@link #isDBValue()} is {@code true}, in which case it is embedded as a raw SQL expression.
      *
-     * @return 기본값 (DB 기준)
+     * @return the default value for INSERT
      */
     String value() default "";
 
     /**
-     * DB 기본값 사용 여부
+     * Whether to rely on the database's own DEFAULT for this column on INSERT.
+     * When {@code true}, the column is omitted from the INSERT statement entirely.
      *
-     * @return 사용 여부
+     * @return {@code true} to use the DB-defined default (default: {@code true})
      */
     boolean isDBDefaultUsed() default true;
 
     /**
-     * 업데이트시 사용할 값 설정
+     * Value to automatically set on UPDATE operations. Like {@link #value()}, it is treated
+     * as a literal string unless {@link #isDBValue()} is {@code true}.
      *
-     * @return 업데이트 값
+     * @return the value to set on UPDATE
      */
     String updateValue() default "";
 
-
     /**
-     * String 의 경우 Default 값이 DB 에서 사용되는 값인지 아니면 String 인지를 판단하기 위한 값
+     * Whether {@link #value()} and {@link #updateValue()} should be treated as raw SQL
+     * expressions (e.g., {@code NOW()}, {@code UUID()}) rather than quoted string literals.
      *
-     * @return
+     * @return {@code true} if the value is a DB expression
      */
     boolean isDBValue() default false;
 }

@@ -6,7 +6,26 @@ import java.io.Serializable;
 import java.util.Objects;
 
 /**
- * Created by dudgh on 2017. 6. 10..
+ * Represents a sort order for a single column, used with {@link XPagination}.
+ *
+ * <p>The column name is specified in camelCase (matching the entity field name) and
+ * is automatically converted to snake_case in the generated SQL.</p>
+ *
+ * <h3>Usage</h3>
+ * <pre>{@code
+ * // Sort by createdAt descending
+ * XOrder order = new XOrder("createdAt", XDirection.DESC);
+ *
+ * // Add to pagination
+ * XPagination pagination = new XPagination();
+ * pagination.setPage(1);
+ * pagination.setSize(10);
+ * pagination.addOrder(order);
+ * pagination.addOrder(new XOrder("name", XDirection.ASC));
+ * }</pre>
+ *
+ * @see XPagination
+ * @see XDirection
  */
 public class XOrder implements Serializable {
 
