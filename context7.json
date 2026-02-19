@@ -1,9 +1,8 @@
 {
   "projectTitle": "Axim REST Framework",
   "description": "Lightweight Spring Boot + MyBatis REST framework with annotation-based entity mapping, repository proxy pattern, query derivation, pagination, and declarative REST client.",
-  "folders": ["core", "mybatis", "rest-api", "demo"],
   "excludeFolders": ["build", ".gradle", ".idea", "gradle"],
-  "excludeFiles": ["gradlew", "gradlew.bat"],
+  "excludeFiles": ["gradlew", "gradlew.bat", "GEMINI.md", "TODO.md"],
   "rules": [
     "Always use @XEntity to map entity classes to database tables",
     "Repository interfaces must extend IXRepository<K, T> and be annotated with @XRepository",
