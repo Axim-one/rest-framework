@@ -435,29 +435,216 @@ public class UserRestController {
 }
 ```
 
-## Exception Handling
+## Error Code System
+
+The framework uses a structured error code system based on `ErrorCode` record and typed exception classes. Each exception class defines `public static final ErrorCode` constants that serve as the single source of truth for both runtime error handling and build-time documentation generation.
+
+### ErrorCode Record
 
 ```java
-// Bad request (400)
-throw new InvalidRequestParameterException("invalid.email.format");
-
-// Unauthorized (401)
-throw new UnAuthorizedException();
-
-// Not found (404)
-throw new NotFoundException("user.not.found");
+public record ErrorCode(String code, String messageKey) {}
 ```
 
-Error response format:
+- `code`: A unique error identifier string (e.g., `"1"`, `"11"`, `"100"`)
+- `messageKey`: An i18n message key resolved via Spring `MessageSource`
+
+### Built-in Exception Classes
+
+The framework provides five exception classes, each mapped to a specific HTTP status:
+
+```java
+// 400 Bad Request
+public class InvalidRequestParameterException extends XRestException {
+    public static final ErrorCode INVALID_REQUEST_PARAMETER = new ErrorCode("11", "server.http.error.invalid-parameter");
+    public static final ErrorCode NOT_FOUND_REQUEST_BODY = new ErrorCode("12", "server.http.error.notfound-api");
+    public static final ErrorCode NOT_SUPPORT_METHOD = new ErrorCode("13", "server.http.error.not-support-method");
+}
+
+// 401 Unauthorized
+public class UnAuthorizedException extends XRestException {
+    public static final ErrorCode NOT_FOUND_ACCESS_TOKEN = new ErrorCode("1", "server.http.error.required-auth");
+    public static final ErrorCode INVALID_ACCESS_TOKEN = new ErrorCode("2", "server.http.error.invalid-auth");
+    public static final ErrorCode EXPIRE_ACCESS_TOKEN = new ErrorCode("3", "server.http.error.expire-auth");
+}
+
+// 404 Not Found
+public class NotFoundException extends XRestException {
+    public static final ErrorCode NOT_FOUND_API = new ErrorCode("100", "server.http.error.notfound-api");
+}
+
+// 500 Internal Server Error
+public class UnknownServerException extends XRestException {
+    public static final ErrorCode UNKNOWN_SERVER_EXCEPTION = new ErrorCode("999", "server.http.error.unknown-server-error");
+}
+
+// 504 Gateway Timeout
+public class UnavailableServerException extends XRestException {
+    public static final ErrorCode UNAVAILABLE_SERVICE = new ErrorCode("900", "server.http.error.no-response-server");
+}
+```
+
+### Built-in Error Codes Reference
+
+| Code | Exception | ErrorCode Constant | HTTP Status | Message (EN) |
+|---|---|---|---|---|
+| `1` | `UnAuthorizedException` | `NOT_FOUND_ACCESS_TOKEN` | 401 | Authentication required. |
+| `2` | `UnAuthorizedException` | `INVALID_ACCESS_TOKEN` | 401 | Invalid authentication credentials. |
+| `3` | `UnAuthorizedException` | `EXPIRE_ACCESS_TOKEN` | 401 | Authentication expired. |
+| `11` | `InvalidRequestParameterException` | `INVALID_REQUEST_PARAMETER` | 400 | Invalid request parameter. |
+| `12` | `InvalidRequestParameterException` | `NOT_FOUND_REQUEST_BODY` | 400 | API not found. |
+| `13` | `InvalidRequestParameterException` | `NOT_SUPPORT_METHOD` | 400 | HTTP method not supported. |
+| `100` | `NotFoundException` | `NOT_FOUND_API` | 404 | API not found. |
+| `900` | `UnavailableServerException` | `UNAVAILABLE_SERVICE` | 504 | No response from server. |
+| `999` | `UnknownServerException` | `UNKNOWN_SERVER_EXCEPTION` | 500 | Unknown server error. |
+
+### Throwing Exceptions with ErrorCode
+
+```java
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    private final UserRepository userRepository;
+
+    public User getUser(Long id) {
+        User user = userRepository.findOne(id);
+        if (user == null) {
+            // Use built-in ErrorCode constant
+            throw new NotFoundException(NotFoundException.NOT_FOUND_API);
+        }
+        return user;
+    }
+
+    public void validateToken(String token) {
+        if (token == null) {
+            throw new UnAuthorizedException(UnAuthorizedException.NOT_FOUND_ACCESS_TOKEN);
+        }
+        if (isExpired(token)) {
+            // With additional description
+            throw new UnAuthorizedException(
+                UnAuthorizedException.EXPIRE_ACCESS_TOKEN,
+                "Token expired at 2024-01-01"
+            );
+        }
+    }
+
+    public void validateRequest(UserCreateRequest req) {
+        if (req.getEmail() == null) {
+            throw new InvalidRequestParameterException(
+                InvalidRequestParameterException.INVALID_REQUEST_PARAMETER,
+                "Email is required"
+            );
+        }
+    }
+}
+```
+
+### Defining Custom Exception with ErrorCode
+
+Create your own exception class by extending `XRestException` and defining `ErrorCode` constants:
+
+```java
+public class UserException extends XRestException {
+    public static final ErrorCode DUPLICATE_EMAIL = new ErrorCode("2001", "user.error.duplicate-email");
+    public static final ErrorCode INACTIVE_ACCOUNT = new ErrorCode("2002", "user.error.inactive-account");
+
+    public UserException(ErrorCode error) {
+        super(HttpStatus.BAD_REQUEST, error);
+    }
+
+    public UserException(ErrorCode error, String description) {
+        super(HttpStatus.BAD_REQUEST, error, description);
+    }
+}
+
+// Usage
+throw new UserException(UserException.DUPLICATE_EMAIL, "alice@example.com already exists");
+```
+
+Add corresponding message properties for i18n:
+
+```properties
+# messages.properties (English)
+user.error.duplicate-email=Email already exists.
+user.error.inactive-account=Account is inactive.
+
+# messages_ko.properties (Korean)
+user.error.duplicate-email=이미 존재하는 이메일입니다.
+user.error.inactive-account=비활성화된 계정입니다.
+```
+
+### Error Response Format (ApiError)
+
+All exceptions are caught by `XExceptionHandler` (`@RestControllerAdvice`) and converted to a standard `ApiError` JSON response:
 
 ```json
 {
-    "code": 400,
-    "message": "Invalid request parameter.",
-    "description": "Email format is invalid.",
+    "code": "2001",
+    "message": "Email already exists.",
+    "description": "alice@example.com already exists",
     "data": null
 }
 ```
+
+| Field | Type | Description |
+|---|---|---|
+| `code` | `String` | Error code from `ErrorCode.code()` |
+| `message` | `String` | i18n-resolved message from `MessageSource` |
+| `description` | `String` | Additional detail (optional) |
+| `data` | `Object` | Attached data, e.g., validation error fields (optional) |
+| `stackTrace` | `String` | Exception stack trace (only in non-prod profiles) |
+
+### i18n Message Resolution
+
+The `XExceptionHandler` resolves messages using Spring `MessageSource`:
+
+```java
+messageSource.getMessage(code, args, code, locale)
+```
+
+- The third argument `code` is the default message — if the key is not found, the key string itself is returned (no `NoSuchMessageException`)
+- Language is determined by the `Accept-Language` header (configurable via `axim.rest.message.language-header`)
+- Default language: `ko-KR` (configurable via `axim.rest.message.default-language`)
+
+```properties
+# application.properties
+axim.rest.message.default-language=ko-KR
+axim.rest.message.language-header=Accept-Language
+```
+
+### Validation Error Handling
+
+Spring `@Valid` / `BindException` errors are automatically handled with field-level error details in the `data` field:
+
+```java
+@PostMapping("/users")
+public User createUser(@Valid @RequestBody UserCreateRequest req) {
+    return userService.create(req);
+}
+```
+
+```json
+{
+    "code": "422",
+    "message": "Invalid request parameter.",
+    "description": "Validation failed for object='userCreateRequest'...",
+    "data": [
+        { "field": "email", "errorMessage": "Email is required." },
+        { "field": "name", "errorMessage": "Name must not be blank." }
+    ]
+}
+```
+
+### Error Propagation via REST Client Proxy
+
+When calling external services via `@XRestService`, server errors are propagated transparently:
+
+```
+Server error → XExceptionHandler → ApiError JSON response
+  → XRestClient receives → parses ApiError → throws XRestException
+  → Caller's XExceptionHandler catches → returns same HTTP status + ApiError
+```
+
+The original HTTP status code (400, 401, 404, 500, etc.) is preserved across the proxy boundary.
 
 ## Declarative REST Client
 
