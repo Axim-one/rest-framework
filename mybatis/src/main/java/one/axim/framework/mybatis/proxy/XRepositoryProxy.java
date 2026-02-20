@@ -1,11 +1,14 @@
 package one.axim.framework.mybatis.proxy;
 
 import one.axim.framework.mybatis.mapper.CommonMapper;
+import one.axim.framework.mybatis.meta.ColumnMetadata;
 import one.axim.framework.mybatis.meta.EntityMetadata;
 import one.axim.framework.mybatis.meta.EntityMetadataFactory;
 import one.axim.framework.mybatis.model.XMapperParameter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 
+import java.beans.PropertyDescriptor;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -100,15 +103,21 @@ public class XRepositoryProxy implements InvocationHandler {
 
     private Object handleSave(Object model) {
         try {
-            if (entityMetadata.getPrimaryKeyColumns().size() > 1) {
-                throw new UnsupportedOperationException(
-                        "save() is not supported for composite primary keys. Use insert() or update() directly.");
+            List<ColumnMetadata> pkColumns = entityMetadata.getPrimaryKeyColumns();
+
+            // Check whether all PK fields are set (non-null)
+            boolean allPkSet = true;
+            for (ColumnMetadata pkColumn : pkColumns) {
+                Object pkValue = pkColumn.getPropertyDescriptor().getReadMethod().invoke(model);
+                if (pkValue == null) {
+                    allPkSet = false;
+                    break;
+                }
             }
-            Object pkValue = entityMetadata.getPrimaryKeyColumns().get(0).getPropertyDescriptor().getReadMethod().invoke(model);
 
-            log.debug("db save primary key : {} ", pkValue);
+            log.debug("db save primary key allSet: {}", allPkSet);
 
-            if (pkValue == null) {
+            if (!allPkSet) {
                 return handleInsert(model);
             }
 
@@ -117,7 +126,7 @@ public class XRepositoryProxy implements InvocationHandler {
             XMapperParameter parameter = new XMapperParameter(model);
             parameter.setResultClass(entityMetadata.getModelClass());
             commonMapper.upsert(parameter);
-            return pkValue;
+            return buildReturnKey(model);
         } catch (Exception e) {
             throw new RuntimeException("Could not determine save action", e);
         }
@@ -128,53 +137,64 @@ public class XRepositoryProxy implements InvocationHandler {
         parameter.setResultClass(entityMetadata.getModelClass());
         commonMapper.insertAndSelectKey(parameter);
 
-        if(entityMetadata.getPrimaryKeyColumns().get(0).isAutoIncrement()) { // Auto Increment 로 ID 가 생성 된다면 .
+        applyAutoIncrementId(model, parameter.getLastInsertedId());
+        return buildReturnKey(model);
+    }
 
-            Class<?> pkType = entityMetadata.getPrimaryKeyColumns().get(0).getPropertyDescriptor().getPropertyType();
+    /**
+     * If any PK column is auto-increment, converts the generated ID to the
+     * correct type and sets it on the model.
+     */
+    private void applyAutoIncrementId(Object model, Object generatedIdObj) {
+        if (generatedIdObj == null || !(generatedIdObj instanceof Number generatedId)) return;
 
-            // Get the generated ID. It should be a Long, but could be an Integer from some drivers.
-            Object generatedIdObj = parameter.getLastInsertedId();
+        for (ColumnMetadata pkColumn : entityMetadata.getPrimaryKeyColumns()) {
+            if (!pkColumn.isAutoIncrement()) continue;
 
-            if(generatedIdObj != null) {
+            Class<?> pkType = pkColumn.getPropertyDescriptor().getPropertyType();
+            Object convertedId;
+            if (pkType.equals(Long.class) || pkType.equals(long.class)) {
+                convertedId = generatedId.longValue();
+            } else if (pkType.equals(Integer.class) || pkType.equals(int.class)) {
+                convertedId = generatedId.intValue();
+            } else {
+                convertedId = generatedId.longValue();
+            }
 
-                if (generatedIdObj instanceof Number) {
+            try {
+                pkColumn.getPropertyDescriptor().getWriteMethod().invoke(model, convertedId);
+            } catch (Exception e) {
+                throw new RuntimeException("Could not set auto-increment ID on model after insert", e);
+            }
+            break; // only one auto-increment column expected
+        }
+    }
 
-                    Number generatedId = (Number) generatedIdObj;
+    /**
+     * Builds the return key from the model's PK field values.
+     * Single PK → returns the scalar value directly (Long, String, etc.)
+     * Composite PK → constructs and populates the key class instance
+     */
+    private Object buildReturnKey(Object model) {
+        List<ColumnMetadata> pkColumns = entityMetadata.getPrimaryKeyColumns();
+        try {
+            if (pkColumns.size() == 1) {
+                return pkColumns.get(0).getPropertyDescriptor().getReadMethod().invoke(model);
+            }
 
-                    try {
-                        Object convertedId;
-
-                        // Convert the retrieved Number ID to the actual type of the model's primary key
-                        if (pkType.equals(Long.class) || pkType.equals(long.class)) {
-                            convertedId = generatedId.longValue();
-                        } else if (pkType.equals(Integer.class) || pkType.equals(int.class)) {
-                            convertedId = generatedId.intValue();
-                        } else {
-                            // For other numeric types, we might need more specific handling.
-                            // For now, we return the long value as a safe default for auto-increment keys.
-                            convertedId = generatedId.longValue();
-                        }
-
-                        if(entityMetadata.getPrimaryKeyColumns().get(0).isAutoIncrement()) {
-                            // Set the ID on the model object
-                            entityMetadata.getPrimaryKeyColumns().get(0).getPropertyDescriptor().getWriteMethod().invoke(model, convertedId);
-                        }
-
-                        // Return the ID, now correctly typed
-                        return convertedId;
-                    } catch (Exception e) {
-                        throw new RuntimeException("Could not set ID on model after insert", e);
-                    }
+            // Composite key: construct key class and populate PK fields
+            Object key = entityMetadata.getKeyClass().getDeclaredConstructor().newInstance();
+            for (ColumnMetadata pkColumn : pkColumns) {
+                Object value = pkColumn.getPropertyDescriptor().getReadMethod().invoke(model);
+                PropertyDescriptor keyPd = BeanUtils.getPropertyDescriptor(
+                        entityMetadata.getKeyClass(), pkColumn.getFieldName());
+                if (keyPd != null && keyPd.getWriteMethod() != null) {
+                    keyPd.getWriteMethod().invoke(key, value);
                 }
             }
-        }
-
-        // Non-auto-increment: return the PK value from the model itself
-        try {
-            return entityMetadata.getPrimaryKeyColumns().get(0)
-                    .getPropertyDescriptor().getReadMethod().invoke(model);
+            return key;
         } catch (Exception e) {
-            throw new RuntimeException("Could not read PK from model after insert", e);
+            throw new RuntimeException("Could not build return key after insert", e);
         }
     }
 

@@ -7,7 +7,7 @@ description: Build Spring Boot REST APIs with Axim REST Framework. Use when crea
 
 Spring Boot + MyBatis lightweight REST framework. Annotation-based entity mapping and repository proxy pattern that minimizes boilerplate while keeping MyBatis SQL control.
 
-**Version:** 1.0.2
+**Version:** 1.1.0
 **Requirements:** Java 17+, Spring Boot 3.3+, MySQL 5.7+/8.0+, MyBatis 3.0+
 **Repository:** https://github.com/Axim-one/rest-framework
 
@@ -22,9 +22,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.0.2'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.0.2'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.0.2'
+    implementation 'com.github.Axim-one.rest-framework:core:1.1.0'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.1.0'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.1.0'
 }
 ```
 
@@ -42,17 +42,17 @@ dependencies {
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>core</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>rest-api</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>mybatis</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
 </dependencies>
 ```
@@ -231,8 +231,8 @@ public interface UserRepository extends IXRepository<Long, User> {
 
 | Method | Return | Description |
 |---|---|---|
-| `save(entity)` | `K` | PK null → INSERT, PK present → INSERT ON DUPLICATE KEY UPDATE |
-| `insert(entity)` | `K` | Plain INSERT with auto-generated ID |
+| `save(entity)` | `K` | PK null → INSERT, PK present → Upsert (Composite: all PKs set → upsert) |
+| `insert(entity)` | `K` | Plain INSERT with auto-generated ID (Composite: returns key class) |
 | `saveAll(List)` | `K` | Batch INSERT IGNORE |
 | `update(entity)` | `int` | Full UPDATE (all columns including nulls) |
 | `modify(entity)` | `int` | Selective UPDATE (non-null fields only) |
@@ -276,6 +276,47 @@ long count = userRepository.count(Map.of("status", "ACTIVE"));
 // Delete
 userRepository.deleteById(1L);
 userRepository.deleteWhere(Map.of("status", "INACTIVE"));
+```
+
+## Composite Primary Key
+
+Entities with multiple primary keys use a key class for `IXRepository<K, T>`.
+
+```java
+// Key class — field names must match entity PK field names
+@Data
+public class OrderItemKey {
+    private Long orderId;
+    private Long itemId;
+}
+
+// Entity — multiple @XColumn(isPrimaryKey = true)
+@Data
+@XEntity("order_items")
+public class OrderItem {
+    @XColumn(isPrimaryKey = true)
+    private Long orderId;
+    @XColumn(isPrimaryKey = true)
+    private Long itemId;
+    private int quantity;
+    private BigDecimal price;
+}
+
+// Repository
+@XRepository
+public interface OrderItemRepository extends IXRepository<OrderItemKey, OrderItem> {}
+```
+
+```java
+// Usage
+OrderItemKey key = new OrderItemKey();
+key.setOrderId(1L);
+key.setItemId(100L);
+
+repository.findOne(key);       // WHERE order_id = ? AND item_id = ?
+repository.delete(key);        // WHERE order_id = ? AND item_id = ?
+repository.save(orderItem);    // All PKs set → upsert, any null → insert
+repository.insert(orderItem);  // Returns OrderItemKey with both PK values
 ```
 
 ## Query Derivation

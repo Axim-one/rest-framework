@@ -13,9 +13,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.0.2'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.0.2'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.0.2'
+    implementation 'com.github.Axim-one.rest-framework:core:1.1.0'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.1.0'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.1.0'
 }
 ```
 
@@ -33,17 +33,17 @@ dependencies {
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>core</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>rest-api</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>mybatis</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
 </dependencies>
 ```
@@ -177,6 +177,31 @@ public class Partner extends BaseEntity {
 // All fields mapped: id, createdAt, updatedAt, name, status
 ```
 
+### Composite Primary Key Entity
+
+For tables with composite primary keys, mark multiple fields with `@XColumn(isPrimaryKey = true)` and define a key class.
+
+```java
+// Key class — field names must match entity PK field names
+@Data
+public class OrderItemKey {
+    private Long orderId;
+    private Long itemId;
+}
+
+// Entity with composite primary key
+@Data
+@XEntity("order_items")
+public class OrderItem {
+    @XColumn(isPrimaryKey = true)
+    private Long orderId;
+    @XColumn(isPrimaryKey = true)
+    private Long itemId;
+    private int quantity;
+    private BigDecimal price;
+}
+```
+
 ## @XDefaultValue Patterns
 
 Four common patterns for default value handling:
@@ -276,6 +301,27 @@ userRepository.remove(1L);   // alias for deleteById
 
 // Conditional delete
 userRepository.deleteWhere(Map.of("status", "INACTIVE"));
+```
+
+### Composite Key Operations
+
+```java
+@XRepository
+public interface OrderItemRepository extends IXRepository<OrderItemKey, OrderItem> {}
+
+// Lookup / delete by composite key
+OrderItemKey key = new OrderItemKey();
+key.setOrderId(1L);
+key.setItemId(100L);
+
+OrderItem item = repository.findOne(key);   // WHERE order_id = ? AND item_id = ?
+repository.delete(key);                      // WHERE order_id = ? AND item_id = ?
+
+// save() — all PKs set → upsert, any PK null → insert
+repository.save(orderItem);
+
+// insert() — returns OrderItemKey with both PK values
+OrderItemKey savedKey = repository.insert(orderItem);
 ```
 
 ### Find Operations
@@ -692,8 +738,8 @@ public interface UserMapper {
 
 | Method | Return | Description |
 |---|---|---|
-| `save(entity)` | `K` | Upsert: PK null=INSERT, PK present=INSERT ON DUPLICATE KEY UPDATE |
-| `insert(entity)` | `K` | Plain INSERT with auto-generated ID |
+| `save(entity)` | `K` | Upsert: PK null=INSERT, PK present=INSERT ON DUPLICATE KEY UPDATE (Composite: all PKs set → upsert) |
+| `insert(entity)` | `K` | Plain INSERT with auto-generated ID (Composite: returns key class) |
 | `saveAll(List)` | `K` | Batch INSERT IGNORE |
 | `update(entity)` | `int` | Full UPDATE (all columns including nulls) |
 | `modify(entity)` | `int` | Selective UPDATE (non-null fields only) |

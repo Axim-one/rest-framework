@@ -7,6 +7,7 @@ Spring Boot + MyBatis 기반의 경량 REST 프레임워크. 어노테이션 기
 - **MyBatis Repository Proxy** - `IXRepository<K, T>` 인터페이스 선언만으로 CRUD 자동 생성
 - **Query Derivation** - `findByEmailAndStatus()`처럼 메서드명에서 SQL 자동 파싱
 - **Annotation-based Mapping** - `@XEntity`, `@XColumn`, `@XDefaultValue`로 테이블/컬럼 매핑
+- **Composite Primary Key** - 복합키 엔티티 지원 (키 클래스 기반 CRUD)
 - **Atomic Upsert** - `save()` 호출 시 `INSERT ... ON DUPLICATE KEY UPDATE`로 원자적 처리
 - **Selective Update** - `modify()`로 null이 아닌 필드만 UPDATE
 - **Pagination** - `XPagination` + `XPage<T>`로 페이지네이션, COUNT, 정렬 자동 처리
@@ -44,9 +45,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.0.2'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.0.2'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.0.2'
+    implementation 'com.github.Axim-one.rest-framework:core:1.1.0'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.1.0'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.1.0'
 }
 ```
 
@@ -64,17 +65,17 @@ dependencies {
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>core</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>rest-api</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>mybatis</artifactId>
-        <version>1.0.2</version>
+        <version>1.1.0</version>
     </dependency>
 </dependencies>
 ```
@@ -157,8 +158,8 @@ public class MyApplication {
 
 | Method | Return | Description |
 |---|---|---|
-| `save(entity)` | `K` | PK null -> INSERT, PK 존재 -> Upsert |
-| `insert(entity)` | `K` | INSERT + auto-generated ID |
+| `save(entity)` | `K` | PK null → INSERT, PK 존재 → Upsert (복합키: 모든 PK non-null → upsert) |
+| `insert(entity)` | `K` | INSERT + auto-generated ID (복합키: 키 클래스 반환) |
 | `saveAll(List<T>)` | `K` | Batch INSERT (INSERT IGNORE) |
 | `update(entity)` | `int` | 전체 컬럼 UPDATE |
 | `modify(entity)` | `int` | Selective UPDATE (null 제외) |
@@ -170,6 +171,47 @@ public class MyApplication {
 | `count()` / `count(Map)` | `long` | 건수 |
 | `deleteById(key)` | `int` | PK 삭제 |
 | `deleteWhere(Map)` | `int` | 조건 삭제 |
+
+## Composite Primary Key
+
+복합키 엔티티는 여러 `@XColumn(isPrimaryKey = true)` 필드를 선언하고, 키 클래스를 `IXRepository<K, T>`의 `K`로 사용합니다.
+
+```java
+// Key class — 필드명은 엔티티의 PK 필드명과 동일해야 합니다
+@Data
+public class OrderItemKey {
+    private Long orderId;
+    private Long itemId;
+}
+
+// Entity — multiple @XColumn(isPrimaryKey = true)
+@Data
+@XEntity("order_items")
+public class OrderItem {
+    @XColumn(isPrimaryKey = true)
+    private Long orderId;
+    @XColumn(isPrimaryKey = true)
+    private Long itemId;
+    private int quantity;
+    private BigDecimal price;
+}
+
+// Repository
+@XRepository
+public interface OrderItemRepository extends IXRepository<OrderItemKey, OrderItem> {}
+```
+
+```java
+// 사용 예제
+OrderItemKey key = new OrderItemKey();
+key.setOrderId(1L);
+key.setItemId(100L);
+
+repository.findOne(key);       // WHERE order_id = ? AND item_id = ?
+repository.delete(key);        // WHERE order_id = ? AND item_id = ?
+repository.save(orderItem);    // 모든 PK set → upsert, any null → insert
+repository.insert(orderItem);  // OrderItemKey 반환 (both PK values)
+```
 
 ## Query Derivation
 
