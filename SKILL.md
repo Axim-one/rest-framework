@@ -1,0 +1,445 @@
+---
+name: axim-rest-framework
+description: Build Spring Boot REST APIs with Axim REST Framework. Use when creating entities, repositories, services, controllers, error handling, or pagination with the axim-rest-framework (Spring Boot + MyBatis). Covers @XEntity, @XRepository, IXRepository, query derivation, save/modify/upsert, XPagination, XPage, error codes, i18n exceptions, and declarative REST client.
+---
+
+# Axim REST Framework
+
+Spring Boot + MyBatis lightweight REST framework. Annotation-based entity mapping and repository proxy pattern that minimizes boilerplate while keeping MyBatis SQL control.
+
+**Version:** 1.0.2
+**Requirements:** Java 17+, Spring Boot 3.3+, MySQL 5.7+/8.0+, MyBatis 3.0+
+**Repository:** https://github.com/Axim-one/rest-framework
+
+## Installation
+
+### Gradle
+
+```gradle
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation 'com.github.Axim-one.rest-framework:core:1.0.2'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.0.2'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.0.2'
+}
+```
+
+### Maven
+
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>com.github.Axim-one.rest-framework</groupId>
+        <artifactId>core</artifactId>
+        <version>1.0.2</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.Axim-one.rest-framework</groupId>
+        <artifactId>rest-api</artifactId>
+        <version>1.0.2</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.Axim-one.rest-framework</groupId>
+        <artifactId>mybatis</artifactId>
+        <version>1.0.2</version>
+    </dependency>
+</dependencies>
+```
+
+## Application Setup
+
+CRITICAL: All four annotations are required on the main application class.
+
+```java
+@ComponentScan({"one.axim.framework.rest", "one.axim.framework.mybatis", "com.myapp"})
+@SpringBootApplication
+@XRepositoryScan("com.myapp")
+@MapperScan({"one.axim.framework.mybatis.mapper", "com.myapp"})
+public class MyApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(MyApplication.class, args);
+    }
+}
+```
+
+### application.properties
+
+```properties
+spring.datasource.url=jdbc:mysql://localhost:3306/mydb
+spring.datasource.username=root
+spring.datasource.password=
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+mybatis.config-location=classpath:mybatis-config.xml
+
+# Optional: HTTP Client
+axim.rest.client.pool-size=200
+axim.rest.client.connection-request-timeout=30
+axim.rest.client.response-timeout=30
+
+# Optional: Session/Token
+axim.rest.session.secret-key=your-hmac-secret-key
+axim.rest.session.expire-days=7
+
+# Optional: i18n
+axim.rest.message.default-language=ko-KR
+axim.rest.message.language-header=Accept-Language
+```
+
+### mybatis-config.xml
+
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+    <settings>
+        <setting name="cacheEnabled" value="true"/>
+        <setting name="useGeneratedKeys" value="true"/>
+        <setting name="defaultExecutorType" value="SIMPLE"/>
+        <setting name="defaultStatementTimeout" value="10"/>
+        <setting name="callSettersOnNulls" value="true"/>
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+    </settings>
+    <objectFactory type="one.axim.framework.mybatis.plugin.XObjectFactory"/>
+    <plugins>
+        <plugin interceptor="one.axim.framework.mybatis.plugin.XResultInterceptor"/>
+    </plugins>
+    <mappers>
+        <mapper class="one.axim.framework.mybatis.mapper.CommonMapper"/>
+    </mappers>
+</configuration>
+```
+
+## Entity Definition
+
+Use `@XEntity` to map a class to a database table. Fields auto-map using camelCase → snake_case conversion.
+
+```java
+@Data
+@XEntity("users")
+public class User {
+
+    @XColumn(isPrimaryKey = true, isAutoIncrement = true)
+    private Long id;
+
+    private String email;
+    private String name;
+
+    @XDefaultValue(value = "NOW()", isDBValue = true)
+    private LocalDateTime createdAt;
+
+    @XDefaultValue(updateValue = "NOW()", isDBValue = true)
+    private LocalDateTime updatedAt;
+
+    @XColumn(insert = false, update = false)
+    private String readOnlyField;
+
+    @XIgnoreColumn
+    private String transientField;
+}
+```
+
+### Entity with Schema
+
+```java
+@XEntity(value = "orders", schema = "shop")
+public class Order { ... }
+```
+
+### Entity Inheritance
+
+Parent class fields are automatically included:
+
+```java
+public class BaseEntity {
+    @XColumn(isPrimaryKey = true, isAutoIncrement = true)
+    private Long id;
+
+    @XDefaultValue(value = "NOW()", isDBValue = true)
+    private LocalDateTime createdAt;
+
+    @XDefaultValue(updateValue = "NOW()", isDBValue = true)
+    private LocalDateTime updatedAt;
+}
+
+@Data
+@XEntity("partners")
+public class Partner extends BaseEntity {
+    private String name;
+    private String status;
+}
+```
+
+### @XDefaultValue Patterns
+
+```java
+// Pattern 1: Use DB DEFAULT (column omitted from INSERT)
+@XDefaultValue(isDBDefaultUsed = true)
+private String region;
+
+// Pattern 2: Literal string value on INSERT
+@XDefaultValue(value = "ACTIVE", isDBDefaultUsed = false)
+private String status;
+
+// Pattern 3: DB expression on INSERT
+@XDefaultValue(value = "NOW()", isDBValue = true, isDBDefaultUsed = false)
+private LocalDateTime createdAt;
+
+// Pattern 4: Auto-set value on UPDATE
+@XDefaultValue(updateValue = "NOW()", isDBValue = true)
+private LocalDateTime updatedAt;
+```
+
+## Annotations Reference
+
+| Annotation | Target | Description |
+|---|---|---|
+| `@XEntity(value, schema)` | Class | Maps class to database table |
+| `@XColumn(value, isPrimaryKey, isAutoIncrement, insert, update)` | Field | Column mapping with options |
+| `@XDefaultValue(value, updateValue, isDBDefaultUsed, isDBValue)` | Field | Default values for INSERT/UPDATE |
+| `@XIgnoreColumn` | Field | Excludes field from DB mapping |
+| `@XRepository` | Interface | Marks repository for proxy generation |
+| `@XRepositoryScan(basePackages)` | Class | Scans for @XRepository interfaces |
+
+## Repository
+
+Extend `IXRepository<K, T>` and annotate with `@XRepository`:
+
+```java
+@XRepository
+public interface UserRepository extends IXRepository<Long, User> {
+    User findByEmail(String email);
+    List<User> findByStatus(String status);
+    boolean existsByEmail(String email);
+    long countByStatus(String status);
+    int deleteByStatusAndName(String status, String name);
+}
+```
+
+### Repository API
+
+| Method | Return | Description |
+|---|---|---|
+| `save(entity)` | `K` | PK null → INSERT, PK present → INSERT ON DUPLICATE KEY UPDATE |
+| `insert(entity)` | `K` | Plain INSERT with auto-generated ID |
+| `saveAll(List)` | `K` | Batch INSERT IGNORE |
+| `update(entity)` | `int` | Full UPDATE (all columns including nulls) |
+| `modify(entity)` | `int` | Selective UPDATE (non-null fields only) |
+| `findOne(key)` | `T` | Find by primary key |
+| `findAll()` | `List<T>` | Find all rows |
+| `findAll(pagination)` | `XPage<T>` | Paginated find all |
+| `findWhere(Map)` | `List<T>` | Find by conditions |
+| `findWhere(pagination, Map)` | `XPage<T>` | Paginated find by conditions |
+| `findOneWhere(Map)` | `T` | Find one by conditions |
+| `exists(key)` | `boolean` | Check existence by PK |
+| `count()` / `count(Map)` | `long` | Total / conditional count |
+| `deleteById(key)` | `int` | Delete by primary key |
+| `deleteWhere(Map)` | `int` | Delete by conditions |
+
+### CRUD Examples
+
+```java
+// save() - Upsert
+User user = new User();
+user.setName("Alice");
+userRepository.save(user);        // INSERT, auto-increment ID set on entity
+user.setId(1L);
+userRepository.save(user);        // INSERT ... ON DUPLICATE KEY UPDATE
+
+// insert() - Plain INSERT
+userRepository.insert(user);
+
+// update() vs modify()
+userRepository.update(user);      // SET name='Alice', email=NULL, status=NULL
+userRepository.modify(user);      // SET name='Alice' (null fields skipped)
+
+// saveAll() - Batch
+userRepository.saveAll(List.of(user1, user2, user3));
+
+// Find
+User found = userRepository.findOne(1L);
+List<User> active = userRepository.findWhere(Map.of("status", "ACTIVE"));
+boolean exists = userRepository.exists(1L);
+long count = userRepository.count(Map.of("status", "ACTIVE"));
+
+// Delete
+userRepository.deleteById(1L);
+userRepository.deleteWhere(Map.of("status", "INACTIVE"));
+```
+
+## Query Derivation
+
+Declare methods and SQL is auto-generated from the method name.
+
+**Supported Prefixes:** `findBy`, `findAllBy`, `countBy`, `existsBy`, `deleteBy`
+**Condition Combinator:** `And`
+
+```java
+@XRepository
+public interface OrderRepository extends IXRepository<Long, Order> {
+    Order findByOrderNo(String orderNo);                           // WHERE order_no = ?
+    List<Order> findByUserIdAndStatus(Long userId, String status); // WHERE user_id = ? AND status = ?
+    long countByStatus(String status);                             // SELECT COUNT(*) WHERE status = ?
+    boolean existsByOrderNo(String orderNo);                       // EXISTS check
+    int deleteByUserIdAndStatus(Long userId, String status);       // DELETE WHERE ...
+}
+```
+
+## Pagination
+
+```java
+XPagination pagination = new XPagination();
+pagination.setPage(1);       // 1-based
+pagination.setSize(20);
+pagination.addOrder(new XOrder("createdAt", XDirection.DESC));
+
+XPage<User> result = userRepository.findAll(pagination);
+result.getTotalCount();   // total rows
+result.getPage();         // current page
+result.getPageRows();     // rows in this page
+result.getHasNext();      // more pages?
+
+// Controller with auto-binding
+@GetMapping
+public XPage<User> searchUsers(@XPaginationDefault XPagination pagination) {
+    return userRepository.findAll(pagination);
+}
+// Accepts: ?page=1&size=10&sort=email,asc
+```
+
+## Error Code System
+
+### ErrorCode Record
+
+```java
+public record ErrorCode(String code, String messageKey) {}
+```
+
+### Built-in Exceptions
+
+| Code | Exception | HTTP | Description |
+|---|---|---|---|
+| `1` | `UnAuthorizedException` | 401 | Authentication required |
+| `2` | `UnAuthorizedException` | 401 | Invalid credentials |
+| `3` | `UnAuthorizedException` | 401 | Token expired |
+| `11` | `InvalidRequestParameterException` | 400 | Invalid parameter |
+| `12` | `InvalidRequestParameterException` | 400 | Request body not found |
+| `13` | `InvalidRequestParameterException` | 400 | Method not supported |
+| `100` | `NotFoundException` | 404 | Not found |
+| `900` | `UnavailableServerException` | 504 | Server unavailable |
+| `999` | `UnknownServerException` | 500 | Unknown error |
+
+### Custom Exception
+
+```java
+public class UserException extends XRestException {
+    public static final ErrorCode DUPLICATE_EMAIL = new ErrorCode("2001", "user.error.duplicate-email");
+    public static final ErrorCode INACTIVE_ACCOUNT = new ErrorCode("2002", "user.error.inactive-account");
+
+    public UserException(ErrorCode error) {
+        super(HttpStatus.BAD_REQUEST, error);
+    }
+
+    public UserException(ErrorCode error, String description) {
+        super(HttpStatus.BAD_REQUEST, error, description);
+    }
+}
+
+// Usage
+throw new UserException(UserException.DUPLICATE_EMAIL, "alice@example.com already exists");
+```
+
+### i18n Messages
+
+```properties
+# messages.properties
+user.error.duplicate-email=Email already exists.
+
+# messages_ko.properties
+user.error.duplicate-email=이미 존재하는 이메일입니다.
+```
+
+### Error Response Format
+
+```json
+{
+    "code": "2001",
+    "message": "Email already exists.",
+    "description": "alice@example.com already exists",
+    "data": null
+}
+```
+
+## Declarative REST Client
+
+```java
+@XRestService(name = "user-service", host = "${external.user-service.host}", version = "v1")
+public interface UserServiceClient {
+
+    @XRestAPI(url = "/users/{id}", method = XHttpMethod.GET)
+    User getUser(@PathVariable("id") Long id);
+
+    @XRestAPI(url = "/users", method = XHttpMethod.POST)
+    User createUser(@RequestBody User user);
+}
+```
+
+## Complete Service Layer Example
+
+```java
+@Service
+@RequiredArgsConstructor
+public class UserService {
+    private final UserRepository userRepository;
+
+    public User create(User user) {
+        userRepository.save(user);
+        return user;
+    }
+
+    public User partialUpdate(Long id, UserUpdateRequest req) {
+        User user = new User();
+        user.setId(id);
+        user.setName(req.getName());
+        userRepository.modify(user);    // selective UPDATE
+        return userRepository.findOne(id);
+    }
+
+    public XPage<User> list(int page, int size) {
+        XPagination pagination = new XPagination();
+        pagination.setPage(page);
+        pagination.setSize(size);
+        pagination.addOrder(new XOrder("createdAt", XDirection.DESC));
+        return userRepository.findAll(pagination);
+    }
+}
+```
+
+## Architecture
+
+```
+Application Code                    Framework Internals
+────────────────                    ───────────────────
+@XRepository                        XRepositoryBeanScanner
+UserRepository                           ↓
+  extends IXRepository<K, T>        XRepositoryProxyFactoryBean
+       ↓                                 ↓
+  (JDK Dynamic Proxy)              XRepositoryProxy (InvocationHandler)
+       ↓                                 ↓
+                                    CommonMapper (@Mapper)
+                                         ↓
+                                    CrudSqlProvider (SQL Generation + Cache)
+                                         ↓
+                                    XResultInterceptor (Pagination, Result Mapping)
+```
