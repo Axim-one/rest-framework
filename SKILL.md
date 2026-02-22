@@ -339,6 +339,8 @@ public interface OrderRepository extends IXRepository<Long, Order> {
 
 ## Pagination
 
+IMPORTANT: Always use `XPagination` and `XPage` for pagination. NEVER create custom pagination classes (e.g., PageRequest, PageResponse, PaginationDTO). The framework handles COUNT, ORDER BY, and LIMIT automatically.
+
 ```java
 XPagination pagination = new XPagination();
 pagination.setPage(1);       // 1-based
@@ -357,6 +359,113 @@ public XPage<User> searchUsers(@XPaginationDefault XPagination pagination) {
     return userRepository.findAll(pagination);
 }
 // Accepts: ?page=1&size=10&sort=email,asc
+```
+
+## Query Strategy: Repository vs Custom Mapper
+
+The framework provides two query approaches. Choosing the right one is critical:
+
+### Use @XRepository (auto-generated SQL) when:
+- Exact-match WHERE conditions: `findByStatus("ACTIVE")`
+- Single-table CRUD operations
+- Simple AND conditions: `findByUserIdAndStatus(id, status)`
+
+### Use @Mapper (custom SQL) when:
+- **LIKE / partial match**: `WHERE name LIKE '%keyword%'`
+- **BETWEEN / range**: `WHERE created_at BETWEEN ? AND ?`
+- **JOIN**: Any query involving multiple tables
+- **Subqueries**: `WHERE id IN (SELECT ...)`
+- **Aggregation**: `GROUP BY`, `HAVING`, `SUM()`, `COUNT()` per group
+- **OR conditions**: `WHERE status = ? OR role = ?`
+- **Complex sorting**: Sorting by computed/joined columns
+- **UNION**: Combining result sets
+
+**CRITICAL: Query derivation only supports exact-match `=` with `And` combinator. It does NOT support LIKE, BETWEEN, OR, IN, >, <, JOIN, or any other SQL operator. When these are needed, immediately create a @Mapper interface — do not attempt to work around Repository limitations.**
+
+### Custom Mapper with Pagination (XPagination)
+
+Custom @Mapper methods integrate with XPagination seamlessly. The framework's `XResultInterceptor` automatically intercepts the query to handle COUNT, ORDER BY, and LIMIT — you only write the base SELECT.
+
+**Rules for custom mapper pagination:**
+1. Add `XPagination` as the **first parameter**
+2. Add `Class<?>` as the **last parameter** (pass the entity class — used for result type mapping)
+3. Return `XPage<T>` as the return type
+4. Write **only the base SELECT** — do NOT add ORDER BY or LIMIT in your SQL
+
+```java
+@Mapper
+public interface UserMapper {
+
+    // LIKE search with pagination
+    @Select("SELECT * FROM users WHERE name LIKE CONCAT('%', #{keyword}, '%')")
+    XPage<User> searchByName(XPagination pagination, @Param("keyword") String keyword, Class<?> cls);
+
+    // BETWEEN with pagination
+    @Select("SELECT * FROM users WHERE created_at BETWEEN #{from} AND #{to}")
+    XPage<User> findByDateRange(XPagination pagination,
+                                @Param("from") LocalDateTime from,
+                                @Param("to") LocalDateTime to, Class<?> cls);
+
+    // JOIN with pagination
+    @Select("SELECT u.*, d.name AS department_name FROM users u " +
+            "INNER JOIN departments d ON u.department_id = d.id " +
+            "WHERE d.status = #{status}")
+    XPage<UserWithDepartment> findUsersWithDepartment(XPagination pagination,
+                                                      @Param("status") String status, Class<?> cls);
+
+    // Multiple conditions (OR, IN)
+    @Select("<script>" +
+            "SELECT * FROM users WHERE status IN " +
+            "<foreach item='s' collection='statuses' open='(' separator=',' close=')'>" +
+            "#{s}" +
+            "</foreach>" +
+            "</script>")
+    XPage<User> findByStatuses(XPagination pagination,
+                               @Param("statuses") List<String> statuses, Class<?> cls);
+
+    // Without pagination — just return List<T> (no XPagination, no Class<?>)
+    @Select("SELECT * FROM users WHERE email LIKE CONCAT('%', #{keyword}, '%')")
+    List<User> searchByEmail(@Param("keyword") String keyword);
+
+    // Aggregation (non-paginated, returns custom projection)
+    @Select("SELECT department_id, COUNT(*) as user_count FROM users GROUP BY department_id")
+    List<Map<String, Object>> countByDepartment();
+}
+```
+
+### Controller Pattern: Repository + Mapper Together
+
+A typical controller uses Repository for simple operations and Mapper for complex queries:
+
+```java
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/users")
+public class UserController {
+
+    private final UserRepository userRepository;  // simple CRUD
+    private final UserMapper userMapper;           // complex queries
+
+    @GetMapping("/{id}")
+    public User getUser(@PathVariable Long id) {
+        return userRepository.findOne(id);
+    }
+
+    @GetMapping
+    public XPage<User> searchUsers(@XPaginationDefault XPagination pagination,
+                                   @RequestParam(required = false) String keyword) {
+        if (keyword != null) {
+            return userMapper.searchByName(pagination, keyword, User.class);
+        }
+        return userRepository.findAll(pagination);
+    }
+
+    @PostMapping
+    public User createUser(@RequestBody User user) {
+        userRepository.save(user);
+        return user;
+    }
+}
 ```
 
 ## Error Code System

@@ -340,6 +340,8 @@ long activeCount = userRepository.count(Map.of("status", "ACTIVE"));
 
 ## Pagination
 
+IMPORTANT: Always use `XPagination` and `XPage` for all pagination needs. NEVER create custom pagination classes. The framework's `XResultInterceptor` automatically handles COUNT queries, ORDER BY, and LIMIT for both Repository and custom Mapper methods.
+
 ```java
 XPagination pagination = new XPagination();
 pagination.setPage(1);       // 1-based page number
@@ -706,9 +708,28 @@ public interface UserServiceClient {
 }
 ```
 
+## Query Strategy: When to Use Repository vs Custom Mapper
+
+The framework intentionally provides two query layers. Understanding when to use each is essential:
+
+| Need | Use | Why |
+|---|---|---|
+| Exact-match `=` conditions | `@XRepository` query derivation | Auto-generated, zero boilerplate |
+| CRUD (save, update, delete) | `@XRepository` | Built-in methods |
+| LIKE, BETWEEN, range queries | `@Mapper` | Query derivation only supports `=` |
+| JOIN (any multi-table query) | `@Mapper` | Repository is single-table only |
+| OR conditions | `@Mapper` | Query derivation only supports `And` |
+| IN clause | `@Mapper` | Not supported in query derivation |
+| Subqueries | `@Mapper` | Not supported in query derivation |
+| GROUP BY / aggregation | `@Mapper` | Not supported in query derivation |
+
+**Key principle:** `@XRepository` handles simple single-table exact-match queries. For anything beyond that, use a standard MyBatis `@Mapper` — this is by design, not a limitation.
+
 ## Custom Mapper for Complex Queries
 
-For queries beyond what query derivation supports, use standard MyBatis `@Mapper`:
+For queries beyond what query derivation supports, create a standard MyBatis `@Mapper` interface. The framework's `XResultInterceptor` seamlessly integrates custom mappers with `XPagination`.
+
+### Basic Custom Mapper (No Pagination)
 
 ```java
 @Mapper
@@ -722,6 +743,114 @@ public interface UserMapper {
     List<Map<String, Object>> findUsersWithOrderCount(@Param("status") String status);
 }
 ```
+
+### Custom Mapper with Pagination
+
+The framework's `XResultInterceptor` detects `XPagination` in mapper method parameters and automatically wraps your query with COUNT, ORDER BY, and LIMIT. You only write the base SELECT.
+
+**Three rules for paginated custom mapper methods:**
+1. First parameter: `XPagination pagination`
+2. Last parameter: `Class<?> cls` (pass the entity class at call site)
+3. Return type: `XPage<T>`
+
+Do NOT include ORDER BY or LIMIT in your SQL — the interceptor adds them.
+
+```java
+@Mapper
+public interface OrderMapper {
+
+    // LIKE search with pagination
+    @Select("SELECT * FROM orders WHERE product_name LIKE CONCAT('%', #{keyword}, '%')")
+    XPage<Order> searchOrders(XPagination pagination,
+                              @Param("keyword") String keyword, Class<?> cls);
+
+    // BETWEEN range query
+    @Select("SELECT * FROM orders WHERE created_at BETWEEN #{from} AND #{to}")
+    XPage<Order> findByDateRange(XPagination pagination,
+                                 @Param("from") LocalDateTime from,
+                                 @Param("to") LocalDateTime to, Class<?> cls);
+
+    // JOIN with pagination
+    @Select("SELECT o.*, u.name AS user_name FROM orders o " +
+            "INNER JOIN users u ON o.user_id = u.id " +
+            "WHERE o.status = #{status}")
+    XPage<OrderWithUser> findOrdersWithUser(XPagination pagination,
+                                            @Param("status") String status, Class<?> cls);
+
+    // Complex: LIKE + JOIN + multiple conditions
+    @Select("SELECT o.*, u.name AS user_name FROM orders o " +
+            "INNER JOIN users u ON o.user_id = u.id " +
+            "WHERE o.status = #{status} " +
+            "AND o.product_name LIKE CONCAT('%', #{keyword}, '%')")
+    XPage<OrderWithUser> searchOrdersWithUser(XPagination pagination,
+                                              @Param("status") String status,
+                                              @Param("keyword") String keyword, Class<?> cls);
+
+    // Dynamic SQL with <script>
+    @Select("<script>" +
+            "SELECT * FROM orders WHERE 1=1 " +
+            "<if test='status != null'>AND status = #{status}</if> " +
+            "<if test='keyword != null'>AND product_name LIKE CONCAT('%', #{keyword}, '%')</if> " +
+            "</script>")
+    XPage<Order> searchWithFilters(XPagination pagination,
+                                   @Param("status") String status,
+                                   @Param("keyword") String keyword, Class<?> cls);
+}
+```
+
+### How to Call Paginated Mapper Methods
+
+```java
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+    private final OrderRepository orderRepository;  // simple CRUD
+    private final OrderMapper orderMapper;           // complex queries
+
+    public XPage<Order> search(XPagination pagination, String keyword) {
+        if (keyword != null) {
+            // Pass Order.class as the last argument for result type mapping
+            return orderMapper.searchOrders(pagination, keyword, Order.class);
+        }
+        return orderRepository.findAll(pagination);
+    }
+
+    public XPage<OrderWithUser> searchWithUser(XPagination pagination, String status, String keyword) {
+        return orderMapper.searchOrdersWithUser(pagination, status, keyword, OrderWithUser.class);
+    }
+}
+```
+
+### Controller Pattern
+
+Always use `@XPaginationDefault XPagination` for pagination parameter binding. Never create custom pagination request classes.
+
+```java
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/orders")
+public class OrderController {
+
+    private final OrderService orderService;
+
+    // Pagination: ?page=1&size=20&sort=createdAt,desc
+    @GetMapping
+    public XPage<Order> searchOrders(@XPaginationDefault XPagination pagination,
+                                     @RequestParam(required = false) String keyword) {
+        return orderService.search(pagination, keyword);
+    }
+}
+```
+
+### Pagination Rules Summary
+
+| DO | DON'T |
+|---|---|
+| Use `XPagination` for pagination input | Create custom PageRequest / PaginationDTO classes |
+| Use `XPage<T>` for pagination output | Create custom PageResponse / PaginationResult classes |
+| Use `@XPaginationDefault` in controllers | Manually parse page/size from request params |
+| Let XResultInterceptor handle COUNT/LIMIT | Add COUNT query or LIMIT clause in mapper SQL |
+| Pass `Class<?>` as last param for mapper pagination | Omit the Class parameter (result mapping will fail) |
 
 ## Annotations Reference
 
