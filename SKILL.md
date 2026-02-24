@@ -11,6 +11,20 @@ Spring Boot + MyBatis lightweight REST framework. Annotation-based entity mappin
 **Requirements:** Java 17+, Spring Boot 3.3+, MySQL 5.7+/8.0+, MyBatis 3.0+
 **Repository:** https://github.com/Axim-one/rest-framework
 
+## Critical Rules
+
+- SECURITY: `axim.rest.session.secret-key` MUST be set in production. Without it, tokens have NO signature — anyone can forge a session token.
+- SECURITY: Set `spring.profiles.active=prod` in production. Non-prod profiles log full request bodies including passwords.
+- `@XColumn` is only needed for: primary keys, custom column names, or insert/update control. Regular fields auto-map via camelCase → snake_case — do NOT add `@XColumn` to every field.
+- `@XDefaultValue(value="X")` alone does NOT work — `isDBDefaultUsed` defaults to `true`, so the value is ignored. Must set `isDBDefaultUsed=false` for literal values.
+- `@XRestServiceScan` is required on the application class when using `@XRestService` declarative REST clients.
+- `XWebClient` beans can be registered via `axim.web-client.services.{name}={url}` in properties, then injected with `@Qualifier`.
+- Session token format is NOT JWT — it uses custom `Base64(payload).HmacSHA256(signature)`. Do not use JWT libraries.
+- JSON date format is `yyyy-MM-dd HH:mm:ss`, not ISO 8601.
+- `XSessionResolver` auto-detects `SessionData` subclass parameters — no annotation required on the controller parameter.
+- `@XPaginationDefault` defaults: `page=1`, `size=10`, `direction=DESC`. Sort without direction defaults to ASC.
+- MANDATORY: Every member variable (Entity, DTO, Request, Response, VO) and every enum item MUST have a detailed Javadoc comment including purpose, example values, format rules, constraints, and allowed values.
+
 ## Installation
 
 ### Gradle
