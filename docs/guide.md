@@ -883,3 +883,147 @@ public class OrderController {
 | `count(Map)` | `long` | Conditional row count |
 | `deleteById(key)` | `int` | Delete by primary key |
 | `deleteWhere(Map)` | `int` | Delete by conditions |
+
+## Coding Conventions
+
+### MANDATORY: Document All Member Variables and Enum Items
+
+Every member variable in Entity classes, DTO classes, and every enum item MUST have a Javadoc comment. Comments should be as detailed as possible, including:
+- **Purpose**: What this field represents
+- **Examples**: Concrete example values when applicable
+- **Rules/Constraints**: Validation rules, format patterns, allowed ranges, or business rules
+
+This rule applies to ALL classes: Entity, DTO, Request, Response, VO, and Enum types. No exceptions.
+
+#### Entity Example
+
+```java
+@Data
+@XEntity("orders")
+public class Order {
+
+    /** 주문 고유 식별자 (Auto Increment) */
+    @XColumn(isPrimaryKey = true, isAutoIncrement = true)
+    private Long id;
+
+    /**
+     * 주문 번호
+     * - 형식: "ORD-{yyyyMMdd}-{6자리 시퀀스}"
+     * - 예시: "ORD-20240115-000001"
+     * - UNIQUE 제약조건 적용
+     */
+    private String orderNo;
+
+    /**
+     * 주문 상태
+     * - "PENDING": 결제 대기
+     * - "PAID": 결제 완료
+     * - "SHIPPED": 배송 중
+     * - "DELIVERED": 배송 완료
+     * - "CANCELLED": 주문 취소
+     * @see OrderStatus
+     */
+    private String status;
+
+    /**
+     * 주문 총 금액 (단위: 원, KRW)
+     * - 소수점 2자리까지 허용
+     * - 음수 불가
+     * - 예시: 15000.00
+     */
+    private BigDecimal totalAmount;
+
+    /**
+     * 주문자 ID (users 테이블 FK)
+     * - NULL 불가
+     */
+    private Long userId;
+
+    /** 주문 생성 일시 (INSERT 시 자동 설정) */
+    @XDefaultValue(value = "NOW()", isDBValue = true)
+    private LocalDateTime createdAt;
+
+    /** 주문 수정 일시 (UPDATE 시 자동 갱신) */
+    @XDefaultValue(updateValue = "NOW()", isDBValue = true)
+    private LocalDateTime updatedAt;
+}
+```
+
+#### DTO / Request Example
+
+```java
+@Data
+public class OrderCreateRequest {
+
+    /**
+     * 주문할 상품 ID 목록
+     * - 최소 1개 이상 필수
+     * - 예시: [1, 2, 3]
+     */
+    @NotEmpty
+    private List<Long> productIds;
+
+    /**
+     * 배송지 주소
+     * - 전체 도로명 주소 (우편번호 제외)
+     * - 예시: "서울특별시 강남구 테헤란로 123 4층"
+     * - 최대 200자
+     */
+    @NotBlank
+    @Size(max = 200)
+    private String shippingAddress;
+
+    /**
+     * 배송 메모 (선택사항)
+     * - 예시: "부재 시 경비실에 맡겨주세요"
+     * - 최대 500자, NULL 허용
+     */
+    @Size(max = 500)
+    private String deliveryNote;
+
+    /**
+     * 결제 수단 코드
+     * - "CARD": 신용/체크카드
+     * - "BANK": 무통장입금
+     * - "KAKAO": 카카오페이
+     * - "NAVER": 네이버페이
+     */
+    @NotBlank
+    private String paymentMethod;
+}
+```
+
+#### Enum Example
+
+```java
+public enum OrderStatus {
+
+    /** 결제 대기 — 주문이 생성되었으나 결제가 완료되지 않은 상태 */
+    PENDING,
+
+    /** 결제 완료 — 결제가 확인되어 상품 준비 중인 상태 */
+    PAID,
+
+    /** 배송 중 — 택배사에 인계되어 배송이 진행 중인 상태 */
+    SHIPPED,
+
+    /** 배송 완료 — 수령인이 상품을 수령한 상태 */
+    DELIVERED,
+
+    /** 주문 취소 — 고객 요청 또는 시스템에 의해 취소된 상태. 환불 처리 필요 */
+    CANCELLED
+}
+```
+
+#### Rules Summary
+
+| Rule | Description |
+|---|---|
+| All member variables | Must have `/** */` Javadoc comment describing purpose |
+| Example values | Include concrete examples with `예시:` or `e.g.` prefix |
+| Format/Pattern | Document format rules (e.g., `"ORD-{yyyyMMdd}-{seq}"`) |
+| Allowed values | List all valid values for string-coded fields |
+| Constraints | Note NOT NULL, UNIQUE, max length, range limits |
+| Enum items | Each item must have a comment explaining the state/meaning |
+| FK references | Note the referenced table (e.g., "users 테이블 FK") |
+| Units | Specify units for numeric fields (e.g., 원, KRW, %, 초) |
