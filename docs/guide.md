@@ -50,11 +50,14 @@ dependencies {
 
 ## Application Setup
 
+CRITICAL: All annotations below are required on the main application class. If you use `@XRestService` REST clients, also add `@XRestServiceScan`.
+
 ```java
 @ComponentScan({"one.axim.framework.rest", "one.axim.framework.mybatis", "com.myapp"})
 @SpringBootApplication
-@XRepositoryScan("com.myapp")
-@MapperScan({"one.axim.framework.mybatis.mapper", "com.myapp"})
+@XRepositoryScan("com.myapp.repository")
+@MapperScan({"one.axim.framework.mybatis.mapper", "com.myapp.mapper"})
+@XRestServiceScan("com.myapp.client")  // Only if using @XRestService REST clients
 public class MyApplication {
     public static void main(String[] args) {
         SpringApplication.run(MyApplication.class, args);
@@ -62,27 +65,48 @@ public class MyApplication {
 }
 ```
 
-### application.properties
+| Annotation | Required | Purpose |
+|---|---|---|
+| `@ComponentScan` | **Yes** | Must include `one.axim.framework.rest`, `one.axim.framework.mybatis`, and your app packages |
+| `@XRepositoryScan` | **Yes** | Scans for `@XRepository` interfaces (your repository package) |
+| `@MapperScan` | **Yes** | Must include `one.axim.framework.mybatis.mapper` (framework internal) + your mapper packages |
+| `@XRestServiceScan` | If using REST client | Scans for `@XRestService` interfaces and creates JDK proxy beans |
+
+### application.properties — Complete Reference
 
 ```properties
+# ── DataSource ──
 spring.datasource.url=jdbc:mysql://localhost:3306/mydb
 spring.datasource.username=root
 spring.datasource.password=
 spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 
+# ── MyBatis ──
 mybatis.config-location=classpath:mybatis-config.xml
 
-# Framework HTTP Client (optional)
-axim.rest.client.pool-size=200
-axim.rest.client.connection-request-timeout=30
-axim.rest.client.response-timeout=30
+# ── Framework: HTTP Client (optional) ──
+axim.rest.client.pool-size=200                    # Max HTTP connection pool size (default: 200)
+axim.rest.client.connection-request-timeout=30    # Connection request timeout in seconds (default: 30)
+axim.rest.client.response-timeout=30              # Response timeout in seconds (default: 30)
+axim.rest.debug=false                             # Enable REST client request/response logging (default: false)
 
-# Framework Session (optional)
-axim.rest.session.secret-key=your-hmac-secret-key
-axim.rest.session.expire-days=7
+# ── Framework: Gateway Routing (optional) ──
+axim.rest.gateway.host=http://api-gateway:8080    # Gateway base URL (enables gateway mode for @XRestService)
+
+# ── Framework: Session / Token (optional) ──
+axim.rest.session.secret-key=your-hmac-secret-key # HMAC-SHA256 signing key (if omitted, tokens are unsigned)
+axim.rest.session.token-expire-days=90            # Token expiration in days (default: 90)
+
+# ── Framework: i18n Messages (optional) ──
+axim.rest.message.default-language=ko-KR          # Default locale (default: ko-KR)
+axim.rest.message.language-header=Accept-Language  # HTTP header for language detection (default: Accept-Language)
+spring.messages.basename=messages                  # Application message file prefix (default: messages)
+spring.messages.encoding=UTF-8                     # Message file encoding (default: UTF-8)
 ```
 
 ### mybatis-config.xml
+
+All three elements (objectFactory, plugins, mappers) are **required** for the framework to function correctly.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -97,15 +121,29 @@ axim.rest.session.expire-days=7
         <setting name="callSettersOnNulls" value="true"/>
         <setting name="mapUnderscoreToCamelCase" value="true"/>
     </settings>
+
+    <!-- REQUIRED: Custom object factory for entity instantiation -->
     <objectFactory type="one.axim.framework.mybatis.plugin.XObjectFactory"/>
+
+    <!-- REQUIRED: Interceptor for pagination (COUNT, ORDER BY, LIMIT) and result mapping -->
     <plugins>
         <plugin interceptor="one.axim.framework.mybatis.plugin.XResultInterceptor"/>
     </plugins>
+
+    <!-- REQUIRED: Framework internal mapper for CRUD SQL execution -->
     <mappers>
         <mapper class="one.axim.framework.mybatis.mapper.CommonMapper"/>
     </mappers>
 </configuration>
 ```
+
+| Element | Required | Purpose |
+|---|---|---|
+| `XObjectFactory` | **Yes** | Creates entity instances during result mapping |
+| `XResultInterceptor` | **Yes** | Handles pagination (COUNT/ORDER BY/LIMIT) and dynamic result type mapping |
+| `CommonMapper` | **Yes** | Internal mapper used by `@XRepository` proxy for all CRUD operations |
+| `mapUnderscoreToCamelCase` | **Yes** | Enables MyBatis automatic snake_case → camelCase result mapping |
+| `callSettersOnNulls` | Recommended | Calls setters even for NULL columns (prevents missing fields in result) |
 
 ## Entity Definition
 
@@ -696,17 +734,302 @@ The original HTTP status code (400, 401, 404, 500, etc.) is preserved across the
 
 ## Declarative REST Client
 
+The framework provides JDK Proxy-based declarative REST clients via `@XRestService` and `@XRestAPI`. Requires `@XRestServiceScan` on the application class.
+
+### Direct Mode vs Gateway Mode
+
+Two URL construction modes are available:
+
 ```java
-@XRestService(name = "user-service", host = "${external.user-service.host}", version = "v1")
+// Direct Mode — host is specified, serviceName is just a logical identifier
+// URL: ${host} + @XRestAPI.value()
+// Example: http://localhost:8081/users/1
+@XRestService(value = "user-service", host = "${USER_SERVICE_HOST:http://localhost:8081}")
 public interface UserServiceClient {
-
-    @XRestAPI(url = "/users/{id}", method = XHttpMethod.GET)
+    @XRestAPI(value = "/users/{id}", method = XHttpMethod.GET)
     User getUser(@PathVariable("id") Long id);
+}
 
-    @XRestAPI(url = "/users", method = XHttpMethod.POST)
-    User createUser(@RequestBody User user);
+// Gateway Mode — host is omitted, routes through API gateway
+// URL: ${axim.rest.gateway.host} + serviceName + version + @XRestAPI.value()
+// Example: http://api-gateway:8080/user-service/v1/users/1
+@XRestService(value = "user-service", version = "v1")
+public interface UserServiceClient {
+    @XRestAPI(value = "/users/{id}", method = XHttpMethod.GET)
+    User getUser(@PathVariable("id") Long id);
 }
 ```
+
+| Mode | When to Use | URL Pattern |
+|---|---|---|
+| **Direct** | Calling a specific service directly | `{host}{path}` |
+| **Gateway** | Microservice architecture with API gateway | `{gatewayHost}/{serviceName}/{version}{path}` |
+
+### @XRestAPI Method Parameter Annotations
+
+```java
+@XRestService(value = "order-service", host = "${ORDER_SERVICE_HOST}")
+public interface OrderServiceClient {
+
+    // @PathVariable — replaces {id} in URL path
+    @XRestAPI(value = "/orders/{id}", method = XHttpMethod.GET)
+    Order getOrder(@PathVariable("id") Long id);
+
+    // @RequestBody — serialized as JSON request body
+    @XRestAPI(value = "/orders", method = XHttpMethod.POST)
+    Order createOrder(@RequestBody OrderCreateRequest request);
+
+    // @RequestParam — appended as query parameters (?status=ACTIVE&keyword=test)
+    @XRestAPI(value = "/orders", method = XHttpMethod.GET)
+    List<Order> searchOrders(@RequestParam("status") String status,
+                             @RequestParam("keyword") String keyword);
+
+    // @RequestHeader — set as HTTP headers
+    @XRestAPI(value = "/orders", method = XHttpMethod.GET)
+    List<Order> getOrders(@RequestHeader("X-Tenant-Id") String tenantId);
+
+    // XPagination — automatically converted to query params
+    // Becomes: ?page=1&size=20&sort=createdAt,DESC
+    @XRestAPI(value = "/orders", method = XHttpMethod.GET)
+    XPage<Order> listOrders(XPagination pagination);
+
+    // Combined: multiple annotation types
+    @XRestAPI(value = "/orders/{id}", method = XHttpMethod.PUT)
+    Order updateOrder(@PathVariable("id") Long id,
+                      @RequestBody OrderUpdateRequest request,
+                      @RequestHeader("Access-Token") String token);
+}
+```
+
+### Injecting and Using REST Clients
+
+```java
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+
+    private final OrderServiceClient orderClient;  // Auto-injected proxy
+
+    public Order getOrder(Long id) {
+        return orderClient.getOrder(id);
+    }
+
+    public XPage<Order> listOrders(XPagination pagination) {
+        // XPagination is automatically converted to query params
+        return orderClient.listOrders(pagination);
+    }
+}
+```
+
+### Error Handling in REST Client
+
+Server errors propagate transparently through the proxy. The original HTTP status and ApiError are preserved.
+
+```java
+try {
+    Order order = orderClient.getOrder(id);
+} catch (XRestException e) {
+    e.getStatus();       // Original HTTP status (400, 404, 500, etc.)
+    e.getCode();         // Error code string from ApiError
+    e.getMessage();      // Error message
+    e.getDescription();  // Additional description
+}
+```
+
+### REST Client JSON Serialization
+
+The framework's ObjectMapper is configured with:
+- **Date format:** `yyyy-MM-dd HH:mm:ss` (NOT ISO 8601)
+- **Unknown properties:** Ignored (`FAIL_ON_UNKNOWN_PROPERTIES = false`)
+
+```java
+// Dates are serialized/deserialized as "yyyy-MM-dd HH:mm:ss"
+// ✓ "2024-01-15 14:30:00"
+// ✗ "2024-01-15T14:30:00Z" (ISO 8601 — not used)
+```
+
+## XWebClient (RestClient-based Alternative)
+
+For programmatic HTTP calls (not declarative proxy), use `XWebClient` which uses Spring's newer `RestClient` API.
+
+```java
+@Service
+@RequiredArgsConstructor
+public class ExternalApiService {
+
+    private final XWebClientFactory webClientFactory;
+
+    public User getUser(Long id) {
+        XWebClient client = webClientFactory.create("http://external-api.com");
+
+        // Simple API
+        return client.get("/users/" + id, User.class);
+    }
+
+    public User createUser(UserRequest request) {
+        XWebClient client = webClientFactory.create("http://external-api.com");
+
+        // POST with body
+        return client.post("/users", request, User.class);
+    }
+
+    public List<User> searchUsers(String keyword) {
+        XWebClient client = webClientFactory.create("http://external-api.com");
+
+        // Builder API for complex requests
+        return client.spec()
+                .get("/users?keyword=" + keyword)
+                .header("X-API-Key", "my-key")
+                .retrieve(new ParameterizedTypeReference<List<User>>() {});
+    }
+}
+```
+
+## Session / Token Authentication
+
+The framework provides a built-in token system. **This is NOT JWT** — it uses a custom `Base64(payload).HmacSHA256(signature)` format.
+
+### Token Format
+
+```
+{BASE64_ENCODED_PAYLOAD}.{HMAC_SHA256_SIGNATURE}
+
+Example:
+eyJ1c2VySWQiOjEsInNlc3Npb25JZCI6ImFiYzEyMyJ9.a2b3c4d5e6f7...
+
+NOT JWT format (header.payload.signature)
+```
+
+### Defining Custom Session Data
+
+Extend `SessionData` to define your session model:
+
+```java
+@Data
+public class UserSession extends SessionData {
+
+    /** 사용자 고유 ID */
+    private Long userId;
+
+    /** 사용자 이름 */
+    private String userName;
+
+    /** 사용자 권한 목록 (예시: ["ADMIN", "USER"]) */
+    private List<String> roles;
+}
+```
+
+`SessionData` base fields (auto-managed):
+- `sessionId` (String) — unique session identifier
+- `createDate` (String) — format: `yyyyMMddHHmmss`, used for expiry check
+
+### Generating Tokens (Login)
+
+```java
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/auth")
+public class AuthController {
+
+    private final XAccessTokenParseHandler tokenHandler;
+
+    @PostMapping("/login")
+    public Map<String, String> login(@RequestBody LoginRequest request) {
+        // Authenticate user...
+
+        UserSession session = new UserSession();
+        session.setSessionId(UUID.randomUUID().toString());
+        session.setUserId(authenticatedUser.getId());
+        session.setUserName(authenticatedUser.getName());
+        session.setRoles(authenticatedUser.getRoles());
+
+        String token = tokenHandler.generateAccessToken(session);
+        return Map.of("accessToken", token);
+    }
+}
+```
+
+### Using Session in Controllers
+
+Session data is automatically resolved from the `Access-Token` HTTP header:
+
+```java
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/users")
+public class UserController {
+
+    // UserSession is auto-resolved from "Access-Token" header
+    // If token is missing → 401 (NOT_FOUND_ACCESS_TOKEN)
+    // If token is invalid → 401 (INVALID_ACCESS_TOKEN)
+    // If token is expired → 401 (EXPIRE_ACCESS_TOKEN)
+    @GetMapping("/me")
+    public UserProfile getMyProfile(UserSession session) {
+        return userService.getProfile(session.getUserId());
+    }
+}
+```
+
+### Session Configuration
+
+```properties
+# HMAC-SHA256 signing key (if omitted, tokens are unsigned — less secure)
+axim.rest.session.secret-key=your-secret-key
+
+# Token expiration in days (default: 90)
+axim.rest.session.token-expire-days=90
+```
+
+### Custom Token Handler
+
+Override `XBaseAccessTokenHandler` for custom token logic:
+
+```java
+@Component
+public class CustomTokenHandler extends XBaseAccessTokenHandler {
+    // Customize token generation/parsing as needed
+}
+```
+
+## i18n Message Source
+
+The framework uses a hierarchical message source for error message localization:
+
+```
+Application messages (messages.properties)
+         ↓ (overrides)
+Framework messages (framework-messages.properties)
+```
+
+### Setup
+
+Create message files in `src/main/resources/`:
+
+```properties
+# messages.properties (English — application custom messages)
+user.error.duplicate-email=Email already exists.
+user.error.inactive-account=Account is inactive.
+
+# messages_ko.properties (Korean)
+user.error.duplicate-email=이미 존재하는 이메일입니다.
+user.error.inactive-account=비활성화된 계정입니다.
+```
+
+The framework provides built-in messages in `framework-messages.properties`:
+
+```properties
+server.http.error.invalid-parameter=Invalid request parameter.
+server.http.error.not-support-method=HTTP method not supported.
+server.http.error.required-auth=Authentication required.
+server.http.error.invalid-auth=Invalid authentication credentials.
+server.http.error.expire-auth=Authentication expired.
+server.http.error.notfound-api=API not found.
+server.http.error.server-error=Internal server error.
+server.http.error.unknown-server-error=Unknown server error.
+server.http.error.no-response-server=No response from server.
+```
+
+Application messages override framework messages when the same key is used. If a key is not found in any message source, the key string itself is returned (no exception thrown).
 
 ## Query Strategy: When to Use Repository vs Custom Mapper
 
@@ -1027,3 +1350,194 @@ public enum OrderStatus {
 | Enum items | Each item must have a comment explaining the state/meaning |
 | FK references | Note the referenced table (e.g., "users 테이블 FK") |
 | Units | Specify units for numeric fields (e.g., 원, KRW, %, 초) |
+
+### @XColumn Usage Rules
+
+`@XColumn` is NOT required on every field. The framework auto-maps fields using camelCase → snake_case conversion. Only use `@XColumn` when you need to set specific options.
+
+#### When @XColumn IS Required
+
+```java
+// 1. Primary Key — MUST mark with @XColumn
+@XColumn(isPrimaryKey = true, isAutoIncrement = true)
+private Long id;
+
+// 2. Primary Key without auto-increment (e.g., composite key)
+@XColumn(isPrimaryKey = true)
+private Long orderId;
+
+// 3. Custom column name that doesn't follow camelCase → snake_case
+@XColumn("usr_email_addr")
+private String email;
+
+// 4. Read-only field (excluded from INSERT and UPDATE)
+@XColumn(insert = false, update = false)
+private String readOnlyField;
+
+// 5. Exclude from UPDATE only (e.g., immutable after creation)
+@XColumn(update = false)
+private String createdBy;
+
+// 6. Exclude from INSERT only
+@XColumn(insert = false)
+private String computedField;
+```
+
+#### When @XColumn is NOT Needed (Omit It)
+
+```java
+@Data
+@XEntity("users")
+public class User {
+
+    @XColumn(isPrimaryKey = true, isAutoIncrement = true)
+    private Long id;           // ✓ @XColumn needed — primary key
+
+    private String email;      // ✓ auto-mapped to "email"
+    private String userName;   // ✓ auto-mapped to "user_name"
+    private Integer loginCount; // ✓ auto-mapped to "login_count"
+    private LocalDateTime createdAt; // ✓ auto-mapped to "created_at"
+}
+```
+
+#### @XColumn Quick Reference
+
+| Situation | @XColumn | Example |
+|---|---|---|
+| Primary Key | **Required** | `@XColumn(isPrimaryKey = true, isAutoIncrement = true)` |
+| Composite PK field | **Required** | `@XColumn(isPrimaryKey = true)` |
+| Regular field (camelCase→snake_case) | **Omit** | `private String userName;` → `user_name` |
+| Custom column name | **Required** | `@XColumn("usr_nm")` |
+| Read-only field | **Required** | `@XColumn(insert = false, update = false)` |
+| Exclude from DB entirely | Use `@XIgnoreColumn` | `@XIgnoreColumn private String temp;` |
+
+### @XDefaultValue Pitfall: isDBDefaultUsed Defaults to true
+
+CRITICAL: `isDBDefaultUsed` defaults to `true`. This means `@XDefaultValue(value = "ACTIVE")` will **omit the column from INSERT** and use the DB DEFAULT instead — the `value = "ACTIVE"` is silently ignored!
+
+```java
+// ✗ WRONG — isDBDefaultUsed defaults to true, so "ACTIVE" is IGNORED
+// The column is omitted from INSERT, DB DEFAULT is used instead
+@XDefaultValue(value = "ACTIVE")
+private String status;
+
+// ✓ CORRECT — explicitly set isDBDefaultUsed = false to use literal value
+@XDefaultValue(value = "ACTIVE", isDBDefaultUsed = false)
+private String status;
+
+// ✓ CORRECT — DB expression (isDBValue=true implies isDBDefaultUsed=false behavior)
+@XDefaultValue(value = "NOW()", isDBValue = true)
+private LocalDateTime createdAt;
+
+// ✓ CORRECT — intentionally use DB DEFAULT (column omitted from INSERT)
+@XDefaultValue(isDBDefaultUsed = true)
+private String region;
+
+// ✓ CORRECT — updateValue only (INSERT unaffected, UPDATE auto-sets)
+@XDefaultValue(updateValue = "NOW()", isDBValue = true)
+private LocalDateTime updatedAt;
+```
+
+## Common Pitfalls
+
+Mistakes frequently made by AI when using this framework:
+
+### 1. Using Column Names Instead of Field Names
+
+Query derivation and `findWhere()` use **Java field names** (camelCase), NOT database column names (snake_case).
+
+```java
+// ✗ WRONG — using snake_case column name
+User findByUser_name(String name);
+userRepository.findWhere(Map.of("user_name", "Alice"));
+
+// ✓ CORRECT — using camelCase field name
+User findByUserName(String name);
+userRepository.findWhere(Map.of("userName", "Alice"));
+```
+
+### 2. findBy Return Type Determines Behavior
+
+The return type of `findBy` methods changes the SQL behavior:
+
+```java
+// Returns single entity — adds LIMIT 1 (findOne semantics)
+User findByEmail(String email);
+
+// Returns list — no LIMIT, returns all matches (findWhere semantics)
+List<User> findByEmail(String email);
+```
+
+### 3. update() Overwrites Fields with NULL
+
+`update()` sets ALL updatable columns, including null fields. Use `modify()` for partial updates.
+
+```java
+User user = new User();
+user.setId(1L);
+user.setName("Alice");
+// user.email is null, user.status is null
+
+// ✗ DANGEROUS — sets email=NULL, status=NULL in DB
+userRepository.update(user);
+
+// ✓ SAFE — only sets name='Alice', other fields preserved
+userRepository.modify(user);
+```
+
+### 4. Adding ORDER BY / LIMIT in Custom Mapper SQL
+
+The `XResultInterceptor` automatically handles pagination SQL. Never add ORDER BY or LIMIT in mapper queries.
+
+```java
+// ✗ WRONG — ORDER BY and LIMIT conflict with interceptor
+@Select("SELECT * FROM users WHERE status = #{status} ORDER BY created_at DESC LIMIT 20")
+XPage<User> findByStatus(XPagination pagination, @Param("status") String status, Class<?> cls);
+
+// ✓ CORRECT — only write the base SELECT
+@Select("SELECT * FROM users WHERE status = #{status}")
+XPage<User> findByStatus(XPagination pagination, @Param("status") String status, Class<?> cls);
+```
+
+### 5. Creating Custom Pagination Classes
+
+NEVER create custom pagination classes. Always use the framework's `XPagination` and `XPage`.
+
+```java
+// ✗ WRONG — creating custom pagination
+public class PageRequest { int page; int size; }
+public class PageResponse<T> { List<T> items; long total; }
+
+// ✓ CORRECT — use framework classes
+XPagination pagination = new XPagination();
+XPage<User> result = userRepository.findAll(pagination);
+```
+
+### 6. Passing Empty Map to findWhere()
+
+`findWhere(Map)` requires a non-empty map. Use `findAll()` for unconditional queries.
+
+```java
+// ✗ WRONG — empty map throws IllegalArgumentException
+userRepository.findWhere(Map.of());
+
+// ✓ CORRECT
+userRepository.findAll();
+userRepository.findWhere(Map.of("status", "ACTIVE"));
+```
+
+### 7. Query Derivation Method Name Parsing
+
+Method names are split by `And` only when preceded by lowercase and followed by uppercase. Field names with "And" in them are NOT split.
+
+```java
+// "BrandName" → single field "brandName" (no split — "dN" is lowercase+uppercase within the field)
+User findByBrandName(String brandName);
+
+// "Status" + "Name" → two fields split by "And"
+List<User> findByStatusAndName(String status, String name);
+
+// Parameter count MUST exactly match the number of parsed fields
+// ✗ WRONG — 2 fields parsed but 1 parameter
+List<User> findByStatusAndName(String status);
+```
