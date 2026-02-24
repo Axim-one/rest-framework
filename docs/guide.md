@@ -93,6 +93,10 @@ axim.rest.debug=false                             # Enable REST client request/r
 # ── Framework: Gateway Routing (optional) ──
 axim.rest.gateway.host=http://api-gateway:8080    # Gateway base URL (enables gateway mode for @XRestService)
 
+# ── Framework: XWebClient Bean Registration (optional) ──
+axim.web-client.services.userClient=http://user-service:8080      # Creates "userClient" XWebClient bean
+axim.web-client.services.orderClient=http://order-service:8080    # Creates "orderClient" XWebClient bean
+
 # ── Framework: Session / Token (optional) ──
 axim.rest.session.secret-key=your-hmac-secret-key # HMAC-SHA256 signing key (if omitted, tokens are unsigned)
 axim.rest.session.token-expire-days=90            # Token expiration in days (default: 90)
@@ -398,6 +402,119 @@ result.getHasNext();      // true if more pages exist
 XPage<User> filtered = userRepository.findWhere(
     pagination, Map.of("status", "ACTIVE")
 );
+```
+
+## Argument Resolvers
+
+The framework registers two argument resolvers via `XWebMvcConfiguration`. These automatically inject `XPagination` and `SessionData` subclasses into controller method parameters.
+
+### XPaginationResolver
+
+Resolves `XPagination` parameters from HTTP query strings. Use `@XPaginationDefault` to set defaults.
+
+#### @XPaginationDefault Attributes
+
+| Attribute | Default | Description |
+|---|---|---|
+| `page` | `1` | Page number (1-based) |
+| `size` | `10` | Rows per page |
+| `offset` | `0` | Alternative to page (row offset) |
+| `column` | `""` (none) | Default sort column (camelCase field name) |
+| `direction` | `DESC` | Default sort direction |
+
+#### Query Parameter Mapping
+
+```
+GET /api/v1/users?page=2&size=20&sort=createdAt,DESC&sort=name,ASC
+                  ─────  ──────  ──────────────────  ──────────────
+                  page    size   sort (multiple allowed)
+```
+
+| Query Param | Type | Behavior |
+|---|---|---|
+| `page` | int | Page number (1-based). Only activated if present or `@XPaginationDefault.page != 0` |
+| `size` | int | Rows per page |
+| `offset` | int | Row offset (alternative to page-based pagination) |
+| `sort` | string[] | Format: `column,DIRECTION` or `column` (default ASC). Multiple allowed |
+
+#### Sort Parsing Rules
+
+```
+?sort=createdAt,DESC          → XOrder("createdAt", DESC)
+?sort=name                    → XOrder("name", ASC)        ← direction omitted → defaults to ASC
+?sort=createdAt,DESC&sort=name,ASC  → two XOrder objects (multi-sort)
+```
+
+#### Priority Rules
+
+- If `?page=` is present: page-based pagination is used
+- If `?offset=` is present but not `?page=`: offset-based pagination is used
+- Query parameters override `@XPaginationDefault` values
+- `"undefined"` and `"null"` string values are treated as absent (useful for frontend frameworks)
+
+#### Controller Examples
+
+```java
+// With defaults: page=1, size=20, sort by createdAt DESC
+@GetMapping
+public XPage<User> listUsers(
+        @XPaginationDefault(size = 20, column = "createdAt", direction = XDirection.DESC)
+        XPagination pagination) {
+    return userRepository.findAll(pagination);
+}
+
+// With custom defaults
+@GetMapping("/recent")
+public XPage<User> recentUsers(
+        @XPaginationDefault(page = 1, size = 50, column = "createdAt", direction = XDirection.DESC)
+        XPagination pagination) {
+    return userRepository.findAll(pagination);
+}
+
+// Offset-based pagination
+@GetMapping("/scroll")
+public XPage<User> scrollUsers(
+        @XPaginationDefault(offset = 0, size = 20)
+        XPagination pagination) {
+    return userRepository.findAll(pagination);
+}
+```
+
+### XSessionResolver
+
+Resolves any `SessionData` subclass parameter from the `Access-Token` HTTP header. **No annotation required** — the resolver detects any parameter whose type extends `SessionData`.
+
+#### How It Works
+
+1. Controller method has a `SessionData` subclass parameter (e.g., `UserSession`)
+2. Resolver extracts `Access-Token` header from the request
+3. `XAccessTokenParseHandler.validateSession()` parses and validates the token
+4. If valid: deserialized session object is injected
+5. If missing/invalid/expired: throws `UnAuthorizedException` (401)
+
+#### Requirements
+
+- `XAccessTokenParseHandler` bean must exist (auto-configured if `axim.rest.session.secret-key` is set, or provide a custom `@Component` implementation)
+- If `XAccessTokenParseHandler` bean is not registered, resolver returns `null` (no error thrown — session is simply unavailable)
+
+#### Controller Examples
+
+```java
+// Any SessionData subclass is auto-resolved — no annotation needed
+@GetMapping("/me")
+public UserProfile getMyProfile(UserSession session) {
+    return userService.getProfile(session.getUserId());
+}
+
+// Optional session: use @Nullable or check for null
+// (only if XAccessTokenParseHandler is not registered)
+@GetMapping("/public")
+public Content getContent(@Nullable UserSession session) {
+    if (session != null) {
+        return contentService.getPersonalized(session.getUserId());
+    }
+    return contentService.getDefault();
+}
 ```
 
 ## Query Derivation
@@ -852,6 +969,44 @@ The framework's ObjectMapper is configured with:
 
 For programmatic HTTP calls (not declarative proxy), use `XWebClient` which uses Spring's newer `RestClient` API.
 
+### Option 1: Declarative Bean Registration via Properties
+
+Register `XWebClient` beans by name in `application.properties`:
+
+```properties
+# Each entry creates a named XWebClient bean (lazy-initialized, cached)
+axim.web-client.services.userClient=http://user-service:8080
+axim.web-client.services.orderClient=http://order-service:8080
+axim.web-client.services.paymentClient=http://payment-service:8080
+```
+
+Inject by bean name using `@Qualifier`:
+
+```java
+@Service
+@RequiredArgsConstructor
+public class ExternalApiService {
+
+    @Qualifier("userClient")
+    private final XWebClient userClient;
+
+    @Qualifier("orderClient")
+    private final XWebClient orderClient;
+
+    public User getUser(Long id) {
+        return userClient.get("/users/{id}", User.class, id);
+    }
+
+    public Order getOrder(Long id) {
+        return orderClient.get("/orders/{id}", Order.class, id);
+    }
+}
+```
+
+### Option 2: Programmatic via XWebClientFactory
+
+Use `XWebClientFactory` to create clients dynamically (clients are cached per baseUrl):
+
 ```java
 @Service
 @RequiredArgsConstructor
@@ -861,28 +1016,47 @@ public class ExternalApiService {
 
     public User getUser(Long id) {
         XWebClient client = webClientFactory.create("http://external-api.com");
-
-        // Simple API
-        return client.get("/users/" + id, User.class);
+        return client.get("/users/{id}", User.class, id);
     }
 
     public User createUser(UserRequest request) {
         XWebClient client = webClientFactory.create("http://external-api.com");
-
-        // POST with body
         return client.post("/users", request, User.class);
     }
-
-    public List<User> searchUsers(String keyword) {
-        XWebClient client = webClientFactory.create("http://external-api.com");
-
-        // Builder API for complex requests
-        return client.spec()
-                .get("/users?keyword=" + keyword)
-                .header("X-API-Key", "my-key")
-                .retrieve(new ParameterizedTypeReference<List<User>>() {});
-    }
 }
+```
+
+### XWebClient API Reference
+
+```java
+// Simple API — Class<T> or ParameterizedTypeReference<T>
+client.get("/users/{id}", User.class, id);
+client.post("/users", body, User.class);
+client.put("/users/{id}", body, User.class, id);
+client.patch("/users/{id}", body, User.class, id);
+client.delete("/users/{id}", Void.class, id);
+
+// Generic types
+client.get("/users", new ParameterizedTypeReference<List<User>>() {});
+
+// Builder API — for headers and complex requests
+client.spec()
+        .get("/users?keyword=" + keyword)
+        .header("X-API-Key", "my-key")
+        .header("Authorization", "Bearer " + token)
+        .body(requestBody)
+        .retrieve(new ParameterizedTypeReference<List<User>>() {});
+```
+
+### XWebClient vs @XRestService
+
+| Feature | `@XRestService` (Declarative Proxy) | `XWebClient` (Programmatic) |
+|---|---|---|
+| Style | Interface + annotations | Direct method calls |
+| Bean creation | `@XRestServiceScan` | Properties or `XWebClientFactory` |
+| Best for | Internal microservice calls | External API calls, dynamic URLs |
+| Pagination | Auto XPagination → query params | Manual query string |
+| Gateway routing | Built-in | Manual URL construction |
 ```
 
 ## Session / Token Authentication
@@ -973,11 +1147,21 @@ public class UserController {
 ### Session Configuration
 
 ```properties
-# HMAC-SHA256 signing key (if omitted, tokens are unsigned — less secure)
+# HMAC-SHA256 signing key — MUST be set in production
 axim.rest.session.secret-key=your-secret-key
 
 # Token expiration in days (default: 90)
 axim.rest.session.token-expire-days=90
+```
+
+**SECURITY WARNING: `secret-key` MUST be configured in production.** If omitted, tokens are generated WITHOUT signature verification — the payload is simply Base64-decoded without any integrity check. This means anyone can forge a valid session token by crafting a Base64-encoded JSON payload. Always set a strong, unique secret key for production environments.
+
+```properties
+# ✗ DANGEROUS — no secret-key → tokens can be forged
+# axim.rest.session.secret-key=
+
+# ✓ SECURE — HMAC-SHA256 signature verification enabled
+axim.rest.session.secret-key=a-strong-random-secret-key-at-least-32-chars
 ```
 
 ### Custom Token Handler
@@ -1030,6 +1214,51 @@ server.http.error.no-response-server=No response from server.
 ```
 
 Application messages override framework messages when the same key is used. If a key is not found in any message source, the key string itself is returned (no exception thrown).
+
+## Security Warnings
+
+### 1. Session Secret Key — Token Forgery Risk
+
+If `axim.rest.session.secret-key` is NOT configured, session tokens are generated **without HMAC signature**. The token payload is simply Base64-encoded JSON with no integrity check, meaning **anyone can forge a valid session token**.
+
+```properties
+# ✗ DANGEROUS — production without secret-key
+# Attacker can create: Base64({"userId":1,"sessionId":"fake"}) → valid token
+# axim.rest.session.secret-key=
+
+# ✓ REQUIRED for production — enables HMAC-SHA256 signature verification
+axim.rest.session.secret-key=a-strong-random-secret-key-at-least-32-chars
+```
+
+**Rules:**
+- ALWAYS set `secret-key` in production environments
+- Use a cryptographically strong random string (minimum 32 characters)
+- NEVER commit the actual secret key to source control — use environment variables or secret management
+- Store in `application-prod.properties` or inject via `${SESSION_SECRET_KEY}` environment variable
+
+### 2. Request Body Logging in Development Profile
+
+The framework's `XRequestFilter` logs full request bodies (including JSON payloads) when the active Spring profile is NOT `prod`. This is useful for debugging but poses a security risk:
+
+- **Passwords, credit card numbers, and other sensitive fields are logged as-is** — no field-level masking
+- HTTP headers like `Authorization` and `Access-Token` are masked (`***`), but **request body fields are NOT**
+
+**Rules:**
+- NEVER use development/default profile in production — always set `spring.profiles.active=prod`
+- Be aware that login endpoints (`/auth/login`) will log plaintext passwords in non-prod profiles
+- If you need request logging in production, implement a custom filter with field-level masking
+
+```properties
+# ✗ DANGEROUS — non-prod profile logs all request bodies including passwords
+spring.profiles.active=dev
+
+# ✓ SAFE — prod profile disables request body logging and stack traces in error responses
+spring.profiles.active=prod
+```
+
+### 3. Demo Credentials — Do Not Copy
+
+Demo module configuration files contain hardcoded database credentials. These are for local development only. NEVER copy demo credentials into production configuration.
 
 ## Query Strategy: When to Use Repository vs Custom Mapper
 

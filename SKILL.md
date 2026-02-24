@@ -100,6 +100,10 @@ axim.rest.debug=false                             # REST client logging (default
 # ── Framework: Gateway ──
 axim.rest.gateway.host=http://api-gateway:8080    # Enables gateway mode for @XRestService
 
+# ── Framework: XWebClient Beans ──
+axim.web-client.services.userClient=http://user-service:8080    # Named XWebClient bean
+axim.web-client.services.orderClient=http://order-service:8080  # Named XWebClient bean
+
 # ── Framework: Session / Token ──
 axim.rest.session.secret-key=your-hmac-secret-key # HMAC-SHA256 signing (omit = unsigned)
 axim.rest.session.token-expire-days=90            # Token lifetime (default: 90)
@@ -381,6 +385,58 @@ public XPage<User> searchUsers(@XPaginationDefault XPagination pagination) {
 // Accepts: ?page=1&size=10&sort=email,asc
 ```
 
+## Argument Resolvers
+
+Two resolvers are auto-registered via `XWebMvcConfiguration`:
+
+### XPaginationResolver — @XPaginationDefault
+
+Resolves `XPagination` from query parameters. Annotation defaults:
+
+| Attribute | Default | Description |
+|---|---|---|
+| `page` | `1` | Page number (1-based) |
+| `size` | `10` | Rows per page |
+| `offset` | `0` | Row offset (alternative to page) |
+| `column` | `""` (none) | Default sort column (camelCase) |
+| `direction` | `DESC` | Default sort direction |
+
+Sort parsing:
+```
+?sort=createdAt,DESC          → XOrder("createdAt", DESC)
+?sort=name                    → XOrder("name", ASC)   ← omitted direction defaults to ASC
+?sort=createdAt,DESC&sort=name,ASC  → multi-sort
+```
+
+Priority: `?page=` present → page-based; `?offset=` only → offset-based. Query params override annotation defaults. `"undefined"` and `"null"` strings are treated as absent.
+
+```java
+@GetMapping
+public XPage<User> listUsers(
+        @XPaginationDefault(size = 20, column = "createdAt", direction = XDirection.DESC)
+        XPagination pagination) {
+    return userRepository.findAll(pagination);
+}
+```
+
+### XSessionResolver — SessionData Subclass
+
+Resolves any `SessionData` subclass from `Access-Token` HTTP header. **No annotation required** — auto-detected by parameter type.
+
+```java
+// UserSession extends SessionData → auto-resolved from Access-Token header
+@GetMapping("/me")
+public UserProfile getMyProfile(UserSession session) {
+    return userService.getProfile(session.getUserId());
+}
+```
+
+- Requires `XAccessTokenParseHandler` bean (auto-configured or custom `@Component`)
+- If `XAccessTokenParseHandler` not registered → returns `null` (no error)
+- If token missing → 401 (`NOT_FOUND_ACCESS_TOKEN`)
+- If token invalid → 401 (`INVALID_ACCESS_TOKEN`)
+- If token expired → 401 (`EXPIRE_ACCESS_TOKEN`)
+
 ## Query Strategy: Repository vs Custom Mapper
 
 The framework provides two query approaches. Choosing the right one is critical:
@@ -620,7 +676,31 @@ The framework ObjectMapper uses `yyyy-MM-dd HH:mm:ss` (NOT ISO 8601):
 
 ## XWebClient (RestClient-based Alternative)
 
-For programmatic HTTP calls (not declarative proxy):
+For programmatic HTTP calls (not declarative proxy). Two registration options:
+
+### Option 1: Declarative Bean Registration via Properties
+
+```properties
+# application.properties — each entry creates a named XWebClient bean
+axim.web-client.services.userClient=http://user-service:8080
+axim.web-client.services.orderClient=http://order-service:8080
+```
+
+```java
+@Service
+@RequiredArgsConstructor
+public class ExternalApiService {
+
+    @Qualifier("userClient")
+    private final XWebClient userClient;
+
+    public User getUser(Long id) {
+        return userClient.get("/users/{id}", User.class, id);
+    }
+}
+```
+
+### Option 2: Programmatic via XWebClientFactory
 
 ```java
 @Service
@@ -631,22 +711,37 @@ public class ExternalApiService {
 
     public User getUser(Long id) {
         XWebClient client = webClientFactory.create("http://external-api.com");
-        return client.get("/users/" + id, User.class);
-    }
-
-    public User createUser(UserRequest request) {
-        XWebClient client = webClientFactory.create("http://external-api.com");
-        return client.post("/users", request, User.class);
-    }
-
-    public List<User> searchUsers(String keyword) {
-        XWebClient client = webClientFactory.create("http://external-api.com");
-        return client.spec()
-                .get("/users?keyword=" + keyword)
-                .header("X-API-Key", "my-key")
-                .retrieve(new ParameterizedTypeReference<List<User>>() {});
+        return client.get("/users/{id}", User.class, id);
     }
 }
+```
+
+### API Reference
+
+```java
+// Simple API
+client.get("/users/{id}", User.class, id);
+client.post("/users", body, User.class);
+client.put("/users/{id}", body, User.class, id);
+client.delete("/users/{id}", Void.class, id);
+
+// Generic types
+client.get("/users", new ParameterizedTypeReference<List<User>>() {});
+
+// Builder API
+client.spec()
+        .get("/users?keyword=" + keyword)
+        .header("X-API-Key", "my-key")
+        .body(requestBody)
+        .retrieve(new ParameterizedTypeReference<List<User>>() {});
+```
+
+| Feature | `@XRestService` | `XWebClient` |
+|---|---|---|
+| Style | Interface + annotations | Direct method calls |
+| Bean creation | `@XRestServiceScan` | Properties or `XWebClientFactory` |
+| Best for | Internal microservice calls | External API, dynamic URLs |
+| Pagination | Auto XPagination → query params | Manual query string |
 ```
 
 ## Session / Token Authentication
@@ -711,9 +806,12 @@ public UserProfile getMyProfile(UserSession session) {
 ### Session Configuration
 
 ```properties
-axim.rest.session.secret-key=your-secret-key  # HMAC signing (omit = unsigned)
+# MUST be set in production — without it, tokens can be forged
+axim.rest.session.secret-key=your-secret-key
 axim.rest.session.token-expire-days=90         # Expiration in days (default: 90)
 ```
+
+**SECURITY WARNING:** If `secret-key` is omitted, tokens have NO signature verification — anyone can forge a valid session token by crafting Base64-encoded JSON. ALWAYS set a strong secret key in production.
 
 ## i18n Message Source
 
@@ -734,6 +832,38 @@ server.http.error.server-error=Internal server error.
 ```
 
 If key not found in any source, the key string itself is returned (no exception).
+
+## Security Warnings
+
+### 1. Session Secret Key — Token Forgery Risk
+
+Without `axim.rest.session.secret-key`, token payload is Base64-decoded without integrity check. **Anyone can forge a valid session token.**
+
+```properties
+# ✗ DANGEROUS — attacker creates Base64({"userId":1}) → valid token
+# axim.rest.session.secret-key=
+
+# ✓ REQUIRED for production
+axim.rest.session.secret-key=a-strong-random-secret-key-at-least-32-chars
+```
+
+Rules: Always set in production. Minimum 32 chars. Never commit to source control — use environment variables.
+
+### 2. Request Body Logging in Non-prod Profile
+
+`XRequestFilter` logs full request bodies when profile is NOT `prod`. **Passwords and sensitive fields are logged as-is** (no field-level masking). HTTP headers like `Authorization` are masked, but request body fields are NOT.
+
+```properties
+# ✗ Non-prod → logs plaintext passwords from login endpoints
+spring.profiles.active=dev
+
+# ✓ Prod → disables body logging and stack traces in errors
+spring.profiles.active=prod
+```
+
+### 3. Demo Credentials
+
+Demo module contains hardcoded DB credentials for local development only. NEVER copy into production config.
 
 ## Complete Service Layer Example
 
