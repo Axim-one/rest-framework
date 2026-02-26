@@ -40,6 +40,6 @@ public abstract class XSessionController<T extends SessionData> extends XAbstrac
     }
 
     protected boolean hasSession() {
-        return httpServletRequest.getHeader(XAccessTokenParseHandler.ACCESS_TOKEN_HEADER) != null;
+        return httpServletRequest.getHeader(xAccessTokenParseHandler.getAccessTokenHeader()) != null;
     }
 }

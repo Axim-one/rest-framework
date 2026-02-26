@@ -15,7 +15,7 @@ These rules MUST be followed when using this framework:
 - Session token format is NOT JWT — it uses custom `Base64(payload).HmacSHA256(signature)`. Do not use JWT libraries.
 - JSON date format is `yyyy-MM-dd HH:mm:ss`, not ISO 8601.
 - `XSessionResolver` auto-detects `SessionData` subclass parameters — no annotation required on the controller parameter.
-- `@XPaginationDefault` defaults: `page=1`, `size=10`, `direction=DESC`. Sort without direction defaults to ASC.
+- `XPagination` defaults: `page=1` (1-indexed), `size=20`. `@XPaginationDefault` 없이도 기본값 적용됨. Sort without direction defaults to ASC.
 - MANDATORY: Every member variable (Entity, DTO, Request, Response, VO) and every enum item MUST have a detailed Javadoc comment including purpose, example values, format rules, constraints, and allowed values.
 
 ## Installation
@@ -29,9 +29,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.1.0'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.1.0'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.1.0'
+    implementation 'com.github.Axim-one.rest-framework:core:1.2.0'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.2.0'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.2.0'
 }
 ```
 
@@ -49,17 +49,17 @@ dependencies {
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>core</artifactId>
-        <version>1.1.0</version>
+        <version>1.2.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>rest-api</artifactId>
-        <version>1.1.0</version>
+        <version>1.2.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>mybatis</artifactId>
-        <version>1.1.0</version>
+        <version>1.2.0</version>
     </dependency>
 </dependencies>
 ```
@@ -401,9 +401,8 @@ long activeCount = userRepository.count(Map.of("status", "ACTIVE"));
 IMPORTANT: Always use `XPagination` and `XPage` for all pagination needs. NEVER create custom pagination classes. The framework's `XResultInterceptor` automatically handles COUNT queries, ORDER BY, and LIMIT for both Repository and custom Mapper methods.
 
 ```java
+// page=1, size=20 by default — ready to use immediately
 XPagination pagination = new XPagination();
-pagination.setPage(1);       // 1-based page number
-pagination.setSize(20);      // rows per page
 pagination.addOrder(new XOrder("createdAt", XDirection.DESC));
 pagination.addOrder(new XOrder("name", XDirection.ASC));
 
@@ -428,12 +427,21 @@ The framework registers two argument resolvers via `XWebMvcConfiguration`. These
 
 Resolves `XPagination` parameters from HTTP query strings. Use `@XPaginationDefault` to set defaults.
 
+#### Defaults
+
+`XPagination` has built-in defaults: **`page=1` (1-indexed), `size=20`**. These apply everywhere — controllers, services, manual construction. `@XPaginationDefault` overrides these per-endpoint when needed.
+
+| Constant | Value | Description |
+|---|---|---|
+| `XPagination.DEFAULT_PAGE` | `1` | First page (1-indexed) |
+| `XPagination.DEFAULT_SIZE` | `20` | Rows per page |
+
 #### @XPaginationDefault Attributes
 
 | Attribute | Default | Description |
 |---|---|---|
 | `page` | `1` | Page number (1-based) |
-| `size` | `10` | Rows per page |
+| `size` | `20` | Rows per page |
 | `offset` | `0` | Alternative to page (row offset) |
 | `column` | `""` (none) | Default sort column (camelCase field name) |
 | `direction` | `DESC` | Default sort direction |
@@ -448,7 +456,7 @@ GET /api/v1/users?page=2&size=20&sort=createdAt,DESC&sort=name,ASC
 
 | Query Param | Type | Behavior |
 |---|---|---|
-| `page` | int | Page number (1-based). Only activated if present or `@XPaginationDefault.page != 0` |
+| `page` | int | Page number (1-based). Default: 1 |
 | `size` | int | Rows per page |
 | `offset` | int | Row offset (alternative to page-based pagination) |
 | `sort` | string[] | Format: `column,DIRECTION` or `column` (default ASC). Multiple allowed |
@@ -463,9 +471,8 @@ GET /api/v1/users?page=2&size=20&sort=createdAt,DESC&sort=name,ASC
 
 #### Priority Rules
 
-- If `?page=` is present: page-based pagination is used
-- If `?offset=` is present but not `?page=`: offset-based pagination is used
-- Query parameters override `@XPaginationDefault` values
+- `page`, `size` always have defaults (`1`, `20`) — query parameters override them
+- `offset`-based pagination: set `offset` directly; `getOffset()` returns `(page-1)*size` when page > 0
 - `"undefined"` and `"null"` string values are treated as absent (useful for frontend frameworks)
 
 #### Controller Examples
@@ -498,12 +505,14 @@ public XPage<User> scrollUsers(
 
 ### XSessionResolver
 
-Resolves any `SessionData` subclass parameter from the `Access-Token` HTTP header. **No annotation required** — the resolver detects any parameter whose type extends `SessionData`.
+Resolves any `SessionData` subclass parameter from the token HTTP header. **No annotation required** — the resolver detects any parameter whose type extends `SessionData`.
+
+The default header is `Access-Token`, customizable via `getAccessTokenHeader()` override (see [Custom Token Header](#custom-token-header)).
 
 #### How It Works
 
 1. Controller method has a `SessionData` subclass parameter (e.g., `UserSession`)
-2. Resolver extracts `Access-Token` header from the request
+2. Resolver extracts token header from the request (default: `Access-Token`)
 3. `XAccessTokenParseHandler.validateSession()` parses and validates the token
 4. If valid: deserialized session object is injected
 5. If missing/invalid/expired: throws `UnAuthorizedException` (401)
@@ -1141,7 +1150,7 @@ public class AuthController {
 
 ### Using Session in Controllers
 
-Session data is automatically resolved from the `Access-Token` HTTP header:
+Session data is automatically resolved from the token HTTP header (default: `Access-Token`):
 
 ```java
 @RestController
@@ -1149,7 +1158,7 @@ Session data is automatically resolved from the `Access-Token` HTTP header:
 @RequestMapping("/api/v1/users")
 public class UserController {
 
-    // UserSession is auto-resolved from "Access-Token" header
+    // UserSession is auto-resolved from token header (default: "Access-Token")
     // If token is missing → 401 (NOT_FOUND_ACCESS_TOKEN)
     // If token is invalid → 401 (INVALID_ACCESS_TOKEN)
     // If token is expired → 401 (EXPIRE_ACCESS_TOKEN)
@@ -1190,6 +1199,23 @@ public class CustomTokenHandler extends XBaseAccessTokenHandler {
     // Customize token generation/parsing as needed
 }
 ```
+
+### Custom Token Header
+
+The default header is `Access-Token`. Override `getAccessTokenHeader()` to use a different header:
+
+```java
+@Component
+public class CustomTokenHandler extends XBaseAccessTokenHandler {
+
+    @Override
+    public String getAccessTokenHeader() {
+        return "Authorization";  // Use standard Authorization header
+    }
+}
+```
+
+This affects all token operations: session resolution, `validateSession()`, and `XSessionController.hasSession()`.
 
 ## i18n Message Source
 
@@ -1257,7 +1283,7 @@ axim.rest.session.secret-key=a-strong-random-secret-key-at-least-32-chars
 The framework's `XRequestFilter` logs full request bodies (including JSON payloads) when the active Spring profile is NOT `prod`. This is useful for debugging but poses a security risk:
 
 - **Passwords, credit card numbers, and other sensitive fields are logged as-is** — no field-level masking
-- HTTP headers like `Authorization` and `Access-Token` are masked (`***`), but **request body fields are NOT**
+- HTTP headers like `Authorization` and token headers are masked (`***`), but **request body fields are NOT**
 
 **Rules:**
 - NEVER use development/default profile in production — always set `spring.profiles.active=prod`

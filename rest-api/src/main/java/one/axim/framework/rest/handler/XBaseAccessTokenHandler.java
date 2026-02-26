@@ -45,7 +45,7 @@ public class XBaseAccessTokenHandler implements XAccessTokenParseHandler {
     @Override
     public <R> R parseAccessTokenAndSession(HttpServletRequest request, Class<R> cls) throws UnAuthorizedException {
 
-        String token = request.getHeader(ACCESS_TOKEN_HEADER);
+        String token = request.getHeader(getAccessTokenHeader());
 
         if (token == null) {
             return null;

@@ -7,6 +7,10 @@ import java.util.List;
 /**
  * Pagination request model specifying page number, page size, and sort orders.
  *
+ * <p>Page numbers are <strong>1-indexed</strong>: page 1 is the first page.
+ * Default values are {@code page = 1} and {@code size = 20}, so a newly created
+ * instance is ready to use without additional configuration.</p>
+ *
  * <p>Pass an {@code XPagination} instance to repository query methods
  * (e.g., {@code findAll(XPagination)}, {@code findWhere(XPagination, Map)}) to
  * receive an {@link XPage} result with automatic COUNT query and LIMIT/OFFSET.</p>
@@ -14,11 +18,10 @@ import java.util.List;
  * <h3>Usage</h3>
  * <pre>{@code
  * XPagination pagination = new XPagination();
- * pagination.setPage(1);
- * pagination.setSize(20);
  * pagination.addOrder(new XOrder("createdAt", XDirection.DESC));
  *
  * XPage<User> result = userRepository.findAll(pagination);
+ * // page=1, size=20 by default
  * }</pre>
  *
  * @see XPage
@@ -27,11 +30,17 @@ import java.util.List;
  */
 public class XPagination {
 
+    /** 기본 페이지 번호 (1-indexed) */
+    public static final int DEFAULT_PAGE = 1;
+
+    /** 기본 페이지 크기 */
+    public static final int DEFAULT_SIZE = 20;
+
     private int offset;
 
-    private int size;
+    private int size = DEFAULT_SIZE;
 
-    private int page;
+    private int page = DEFAULT_PAGE;
 
     private final ArrayList<XOrder> orders;
 

@@ -10,7 +10,17 @@ import jakarta.servlet.http.HttpServletRequest;
  */
 public interface XAccessTokenParseHandler {
 
-    String ACCESS_TOKEN_HEADER = "Access-Token";
+    String DEFAULT_ACCESS_TOKEN_HEADER = "Access-Token";
+
+    /**
+     * 인증 토큰을 읽어올 HTTP 헤더 이름을 반환합니다.
+     * 기본값은 {@code "Access-Token"}이며, 구현체에서 override하여 변경할 수 있습니다.
+     *
+     * @return 헤더 이름
+     */
+    default String getAccessTokenHeader() {
+        return DEFAULT_ACCESS_TOKEN_HEADER;
+    }
 
     String generateAccessToken(Object sessionData);
 

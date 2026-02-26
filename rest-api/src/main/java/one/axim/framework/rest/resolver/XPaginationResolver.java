@@ -35,7 +35,8 @@ public class XPaginationResolver implements HandlerMethodArgumentResolver {
         XPagination returnValue = new XPagination();
 
         int offsetDefault = 0;
-        int sizeDefault = 0;
+        int sizeDefault = XPagination.DEFAULT_SIZE;
+        int pageDefault = XPagination.DEFAULT_PAGE;
 
         String sortColumnDefault = null;
         XDirection sortDirectionDefault = XDirection.DESC;
@@ -43,6 +44,7 @@ public class XPaginationResolver implements HandlerMethodArgumentResolver {
         if (xPaginationDefault != null) {
             offsetDefault = xPaginationDefault.offset();
             sizeDefault = xPaginationDefault.size();
+            pageDefault = xPaginationDefault.page();
 
             sortColumnDefault = xPaginationDefault.column().isEmpty() ? null : xPaginationDefault.column();
             sortDirectionDefault = xPaginationDefault.direction();
@@ -50,6 +52,7 @@ public class XPaginationResolver implements HandlerMethodArgumentResolver {
 
         returnValue.setOffset(getParameterIntValue("offset", request, offsetDefault));
         returnValue.setSize(getParameterIntValue("size", request, sizeDefault));
+        returnValue.setPage(getParameterIntValue("page", request, pageDefault));
 
         if (request.getParameter("sort") != null) {
             String[] sortValues = request.getParameterValues("sort");
@@ -67,11 +70,6 @@ public class XPaginationResolver implements HandlerMethodArgumentResolver {
                 returnValue.addOrder(new XOrder(sortColumnDefault, sortDirectionDefault));
             }
         }
-
-        if (hasParameter("page", request) ||
-                (xPaginationDefault != null && !hasParameter("offset", request) && xPaginationDefault.page() != 0))
-            returnValue.setPage(getParameterIntValue("page", request, 1));
-
 
         return returnValue;
     }
@@ -99,10 +97,4 @@ public class XPaginationResolver implements HandlerMethodArgumentResolver {
             return defaultValue;
         }
     }
-
-    private boolean hasParameter(String name, HttpServletRequest request) {
-        String value = request.getParameter(name);
-        return StringUtils.hasText(value);
-    }
-
 }
