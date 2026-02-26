@@ -39,6 +39,8 @@ import java.beans.PropertyDescriptor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -50,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -69,6 +72,7 @@ public class XResultInterceptor implements Interceptor {
     private static final int RESULT_HANDLER_INDEX = 3;
     static final java.time.format.DateTimeFormatter dtFormat =
             java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final Map<String, Class<?>> RETURN_TYPE_CACHE = new ConcurrentHashMap<>();
     private final Logger log = LoggerFactory.getLogger(XResultInterceptor.class);
 
     @Override
@@ -132,6 +136,10 @@ public class XResultInterceptor implements Interceptor {
 
                 if (mappedStatement.getResultMaps().get(0).getType().equals(XPage.class)) {
                     Class resultType = parameterInResultType(parameter);
+
+                    if (resultType == null) {
+                        resultType = resolveReturnTypeFromMethod(mappedStatement.getId());
+                    }
 
                     if (resultType == null) {
                         log.error("Not found Result Parameter Class ");
@@ -471,6 +479,40 @@ public class XResultInterceptor implements Interceptor {
         }
 
         return null;
+    }
+
+    /**
+     * MappedStatement ID(className.methodName)에서 메서드 반환 타입의 제네릭 파라미터를 추출합니다.
+     * 예: XPage<User> → User.class
+     * Class<?> 파라미터 없이 커스텀 @Mapper에서 XPage 페이지네이션을 사용할 수 있게 합니다.
+     */
+    private Class<?> resolveReturnTypeFromMethod(String msId) {
+
+        return RETURN_TYPE_CACHE.computeIfAbsent(msId, id -> {
+            try {
+                int lastDot = id.lastIndexOf('.');
+                if (lastDot < 0) return null;
+
+                String className = id.substring(0, lastDot);
+                String methodName = id.substring(lastDot + 1);
+
+                Class<?> mapperClass = Class.forName(className);
+                for (Method method : mapperClass.getMethods()) {
+                    if (method.getName().equals(methodName)) {
+                        Type returnType = method.getGenericReturnType();
+                        if (returnType instanceof ParameterizedType pt && pt.getRawType() == XPage.class) {
+                            Type actualType = pt.getActualTypeArguments()[0];
+                            if (actualType instanceof Class<?> cls) {
+                                return cls;
+                            }
+                        }
+                    }
+                }
+            } catch (ClassNotFoundException e) {
+                log.warn("Failed to resolve return type for mapper method: {}", id, e);
+            }
+            return null;
+        });
     }
 
     private String getQueryString(MappedStatement mappedStatement, Object parameters) {

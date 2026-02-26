@@ -30,10 +30,12 @@ public class XWebMvcConfiguration implements WebMvcConfigurer {
     }
 
     @Override
-    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
-        MappingJackson2HttpMessageConverter jackson = new MappingJackson2HttpMessageConverter();
-        jackson.setDefaultCharset(StandardCharsets.UTF_8);
-        jackson.setSupportedMediaTypes(List.of(APPLICATION_JSON_UTF8, MediaType.APPLICATION_JSON));
-        converters.add(0, jackson);
+    public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
+        for (HttpMessageConverter<?> converter : converters) {
+            if (converter instanceof MappingJackson2HttpMessageConverter jackson) {
+                jackson.setDefaultCharset(StandardCharsets.UTF_8);
+                jackson.setSupportedMediaTypes(List.of(APPLICATION_JSON_UTF8, MediaType.APPLICATION_JSON));
+            }
+        }
     }
 }

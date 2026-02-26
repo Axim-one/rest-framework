@@ -12,5 +12,5 @@ import one.axim.framework.core.data.XPagination;
 public interface UserMapper {
 
     @Select("SELECT * FROM users WHERE email LIKE CONCAT('%', #{keyword}, '%')")
-    XPage<User> searchUser(XPagination pagination, @Param("keyword") String keyword, Class<?> cls);
+    XPage<User> searchUser(XPagination pagination, @Param("keyword") String keyword);
 }

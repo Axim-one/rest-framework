@@ -1342,10 +1342,9 @@ public interface UserMapper {
 
 The framework's `XResultInterceptor` detects `XPagination` in mapper method parameters and automatically wraps your query with COUNT, ORDER BY, and LIMIT. You only write the base SELECT.
 
-**Three rules for paginated custom mapper methods:**
-1. First parameter: `XPagination pagination`
-2. Last parameter: `Class<?> cls` (pass the entity class at call site)
-3. Return type: `XPage<T>`
+**Two rules for paginated custom mapper methods:**
+1. Include `XPagination pagination` as a parameter
+2. Return type: `XPage<T>` (the entity type is inferred from the generic parameter)
 
 Do NOT include ORDER BY or LIMIT in your SQL — the interceptor adds them.
 
@@ -1356,20 +1355,20 @@ public interface OrderMapper {
     // LIKE search with pagination
     @Select("SELECT * FROM orders WHERE product_name LIKE CONCAT('%', #{keyword}, '%')")
     XPage<Order> searchOrders(XPagination pagination,
-                              @Param("keyword") String keyword, Class<?> cls);
+                              @Param("keyword") String keyword);
 
     // BETWEEN range query
     @Select("SELECT * FROM orders WHERE created_at BETWEEN #{from} AND #{to}")
     XPage<Order> findByDateRange(XPagination pagination,
                                  @Param("from") LocalDateTime from,
-                                 @Param("to") LocalDateTime to, Class<?> cls);
+                                 @Param("to") LocalDateTime to);
 
     // JOIN with pagination
     @Select("SELECT o.*, u.name AS user_name FROM orders o " +
             "INNER JOIN users u ON o.user_id = u.id " +
             "WHERE o.status = #{status}")
     XPage<OrderWithUser> findOrdersWithUser(XPagination pagination,
-                                            @Param("status") String status, Class<?> cls);
+                                            @Param("status") String status);
 
     // Complex: LIKE + JOIN + multiple conditions
     @Select("SELECT o.*, u.name AS user_name FROM orders o " +
@@ -1378,7 +1377,7 @@ public interface OrderMapper {
             "AND o.product_name LIKE CONCAT('%', #{keyword}, '%')")
     XPage<OrderWithUser> searchOrdersWithUser(XPagination pagination,
                                               @Param("status") String status,
-                                              @Param("keyword") String keyword, Class<?> cls);
+                                              @Param("keyword") String keyword);
 
     // Dynamic SQL with <script>
     @Select("<script>" +
@@ -1388,7 +1387,7 @@ public interface OrderMapper {
             "</script>")
     XPage<Order> searchWithFilters(XPagination pagination,
                                    @Param("status") String status,
-                                   @Param("keyword") String keyword, Class<?> cls);
+                                   @Param("keyword") String keyword);
 }
 ```
 
@@ -1403,14 +1402,13 @@ public class OrderService {
 
     public XPage<Order> search(XPagination pagination, String keyword) {
         if (keyword != null) {
-            // Pass Order.class as the last argument for result type mapping
-            return orderMapper.searchOrders(pagination, keyword, Order.class);
+            return orderMapper.searchOrders(pagination, keyword);
         }
         return orderRepository.findAll(pagination);
     }
 
     public XPage<OrderWithUser> searchWithUser(XPagination pagination, String status, String keyword) {
-        return orderMapper.searchOrdersWithUser(pagination, status, keyword, OrderWithUser.class);
+        return orderMapper.searchOrdersWithUser(pagination, status, keyword);
     }
 }
 ```
@@ -1444,7 +1442,6 @@ public class OrderController {
 | Use `XPage<T>` for pagination output | Create custom PageResponse / PaginationResult classes |
 | Use `@XPaginationDefault` in controllers | Manually parse page/size from request params |
 | Let XResultInterceptor handle COUNT/LIMIT | Add COUNT query or LIMIT clause in mapper SQL |
-| Pass `Class<?>` as last param for mapper pagination | Omit the Class parameter (result mapping will fail) |
 
 ## Annotations Reference
 
@@ -1763,11 +1760,11 @@ The `XResultInterceptor` automatically handles pagination SQL. Never add ORDER B
 ```java
 // ✗ WRONG — ORDER BY and LIMIT conflict with interceptor
 @Select("SELECT * FROM users WHERE status = #{status} ORDER BY created_at DESC LIMIT 20")
-XPage<User> findByStatus(XPagination pagination, @Param("status") String status, Class<?> cls);
+XPage<User> findByStatus(XPagination pagination, @Param("status") String status);
 
 // ✓ CORRECT — only write the base SELECT
 @Select("SELECT * FROM users WHERE status = #{status}")
-XPage<User> findByStatus(XPagination pagination, @Param("status") String status, Class<?> cls);
+XPage<User> findByStatus(XPagination pagination, @Param("status") String status);
 ```
 
 ### 5. Creating Custom Pagination Classes

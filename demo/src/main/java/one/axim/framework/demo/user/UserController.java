@@ -29,7 +29,7 @@ public class UserController {
     @GetMapping
     public XPage<User> getAllUsers(@XPaginationDefault XPagination pagination, @RequestParam(value = "keyword", required = false) String keyword) {
         if (keyword != null) {
-            return userMapper.searchUser(pagination, keyword, User.class);
+            return userMapper.searchUser(pagination, keyword);
         }
         return userRepository.findAll(pagination);
     }
