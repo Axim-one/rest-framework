@@ -29,9 +29,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.2.0'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.2.0'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.2.0'
+    implementation 'com.github.Axim-one.rest-framework:core:1.2.1'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.2.1'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.2.1'
 }
 ```
 
@@ -49,17 +49,17 @@ dependencies {
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>core</artifactId>
-        <version>1.2.0</version>
+        <version>1.2.1</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>rest-api</artifactId>
-        <version>1.2.0</version>
+        <version>1.2.1</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>mybatis</artifactId>
-        <version>1.2.0</version>
+        <version>1.2.1</version>
     </dependency>
 </dependencies>
 ```

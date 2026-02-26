@@ -36,9 +36,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.1.0'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.1.0'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.1.0'
+    implementation 'com.github.Axim-one.rest-framework:core:1.2.1'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.2.1'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.2.1'
 }
 ```
 
@@ -56,17 +56,17 @@ dependencies {
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>core</artifactId>
-        <version>1.1.0</version>
+        <version>1.2.1</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>rest-api</artifactId>
-        <version>1.1.0</version>
+        <version>1.2.1</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>mybatis</artifactId>
-        <version>1.1.0</version>
+        <version>1.2.1</version>
     </dependency>
 </dependencies>
 ```
@@ -477,10 +477,9 @@ The framework provides two query approaches. Choosing the right one is critical:
 Custom @Mapper methods integrate with XPagination seamlessly. The framework's `XResultInterceptor` automatically intercepts the query to handle COUNT, ORDER BY, and LIMIT — you only write the base SELECT.
 
 **Rules for custom mapper pagination:**
-1. Add `XPagination` as the **first parameter**
-2. Add `Class<?>` as the **last parameter** (pass the entity class — used for result type mapping)
-3. Return `XPage<T>` as the return type
-4. Write **only the base SELECT** — do NOT add ORDER BY or LIMIT in your SQL
+1. Include `XPagination` as a parameter
+2. Return `XPage<T>` as the return type (entity type is inferred from the generic parameter)
+3. Write **only the base SELECT** — do NOT add ORDER BY or LIMIT in your SQL
 
 ```java
 @Mapper
@@ -488,20 +487,20 @@ public interface UserMapper {
 
     // LIKE search with pagination
     @Select("SELECT * FROM users WHERE name LIKE CONCAT('%', #{keyword}, '%')")
-    XPage<User> searchByName(XPagination pagination, @Param("keyword") String keyword, Class<?> cls);
+    XPage<User> searchByName(XPagination pagination, @Param("keyword") String keyword);
 
     // BETWEEN with pagination
     @Select("SELECT * FROM users WHERE created_at BETWEEN #{from} AND #{to}")
     XPage<User> findByDateRange(XPagination pagination,
                                 @Param("from") LocalDateTime from,
-                                @Param("to") LocalDateTime to, Class<?> cls);
+                                @Param("to") LocalDateTime to);
 
     // JOIN with pagination
     @Select("SELECT u.*, d.name AS department_name FROM users u " +
             "INNER JOIN departments d ON u.department_id = d.id " +
             "WHERE d.status = #{status}")
     XPage<UserWithDepartment> findUsersWithDepartment(XPagination pagination,
-                                                      @Param("status") String status, Class<?> cls);
+                                                      @Param("status") String status);
 
     // Multiple conditions (OR, IN)
     @Select("<script>" +
@@ -511,9 +510,9 @@ public interface UserMapper {
             "</foreach>" +
             "</script>")
     XPage<User> findByStatuses(XPagination pagination,
-                               @Param("statuses") List<String> statuses, Class<?> cls);
+                               @Param("statuses") List<String> statuses);
 
-    // Without pagination — just return List<T> (no XPagination, no Class<?>)
+    // Without pagination — just return List<T> (no XPagination needed)
     @Select("SELECT * FROM users WHERE email LIKE CONCAT('%', #{keyword}, '%')")
     List<User> searchByEmail(@Param("keyword") String keyword);
 
@@ -545,7 +544,7 @@ public class UserController {
     public XPage<User> searchUsers(@XPaginationDefault XPagination pagination,
                                    @RequestParam(required = false) String keyword) {
         if (keyword != null) {
-            return userMapper.searchByName(pagination, keyword, User.class);
+            return userMapper.searchByName(pagination, keyword);
         }
         return userRepository.findAll(pagination);
     }
@@ -1153,11 +1152,11 @@ XResultInterceptor handles pagination SQL automatically. Never add ORDER BY or L
 ```java
 // ✗ WRONG
 @Select("SELECT * FROM users WHERE status = #{status} ORDER BY created_at DESC LIMIT 20")
-XPage<User> findByStatus(XPagination pagination, @Param("status") String status, Class<?> cls);
+XPage<User> findByStatus(XPagination pagination, @Param("status") String status);
 
 // ✓ CORRECT — only the base SELECT
 @Select("SELECT * FROM users WHERE status = #{status}")
-XPage<User> findByStatus(XPagination pagination, @Param("status") String status, Class<?> cls);
+XPage<User> findByStatus(XPagination pagination, @Param("status") String status);
 ```
 
 ### 5. Never Create Custom Pagination Classes
