@@ -128,8 +128,22 @@ public class XRepositoryProxy implements InvocationHandler {
             commonMapper.upsert(parameter);
             return buildReturnKey(model);
         } catch (Exception e) {
-            throw new RuntimeException("Could not determine save action", e);
+            String rootCauseMsg = extractRootCauseMessage(e);
+            throw new RuntimeException(
+                    "Could not determine save action for " + entityMetadata.getTableName()
+                            + ": " + rootCauseMsg, e);
         }
+    }
+
+    /**
+     * 예외 체인에서 가장 깊은 원인 메시지를 추출.
+     */
+    private String extractRootCauseMessage(Throwable e) {
+        Throwable cause = e;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        return cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
     }
 
     private Object handleInsert(Object model) {

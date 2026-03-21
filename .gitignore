@@ -46,3 +46,5 @@ bin/
 .cursor/
 CLAUDE.md
 GEMINI.md
+.modify-guide/
+.playwright-mcp/

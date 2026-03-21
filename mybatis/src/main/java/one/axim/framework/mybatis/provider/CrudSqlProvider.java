@@ -81,16 +81,47 @@ public class CrudSqlProvider {
 
     private String buildInsert(XMapperParameter parameter) {
         EntityMetadata metadata = getMetadata(parameter);
-        return new SQL() {{
-            INSERT_INTO(metadata.getTableName());
-            for (ColumnMetadata column : metadata.getInsertableColumns()) {
-                if (column.isAutoIncrement()) continue;
-                if (column.isDBDefaultUsed() && column.resolveInsertValue() == null) continue;
 
-                String value = column.resolveInsertValue();
-                VALUES(column.getColumnName(), value != null ? value : "#{model." + column.getFieldName() + "}");
+        StringBuilder sb = new StringBuilder("<script>\nINSERT INTO ");
+        sb.append(metadata.getTableName()).append("\n");
+
+        // Column list — null 필드는 동적으로 스킵하여 DB DEFAULT 활용
+        sb.append("<trim prefix=\"(\" suffix=\")\" suffixOverrides=\",\">\n");
+        for (ColumnMetadata column : metadata.getInsertableColumns()) {
+            if (column.isAutoIncrement()) continue;
+            if (column.isDBDefaultUsed() && column.resolveInsertValue() == null) continue;
+
+            String insertValue = column.resolveInsertValue();
+            if (insertValue != null) {
+                // @XDefaultValue with explicit value → always include
+                sb.append(column.getColumnName()).append(",\n");
+            } else {
+                sb.append("<if test=\"model.").append(column.getFieldName()).append(" != null\">");
+                sb.append(column.getColumnName()).append(",");
+                sb.append("</if>\n");
             }
-        }}.toString();
+        }
+        sb.append("</trim>\n");
+
+        // Values list
+        sb.append("<trim prefix=\"VALUES (\" suffix=\")\" suffixOverrides=\",\">\n");
+        for (ColumnMetadata column : metadata.getInsertableColumns()) {
+            if (column.isAutoIncrement()) continue;
+            if (column.isDBDefaultUsed() && column.resolveInsertValue() == null) continue;
+
+            String insertValue = column.resolveInsertValue();
+            if (insertValue != null) {
+                sb.append(insertValue).append(",\n");
+            } else {
+                sb.append("<if test=\"model.").append(column.getFieldName()).append(" != null\">");
+                sb.append("#{model.").append(column.getFieldName()).append("},");
+                sb.append("</if>\n");
+            }
+        }
+        sb.append("</trim>\n");
+
+        sb.append("</script>");
+        return sb.toString();
     }
 
     /**
@@ -340,17 +371,6 @@ public class CrudSqlProvider {
                 .filter(c -> !(c.isDBDefaultUsed() && c.resolveInsertValue() == null))
                 .toList();
 
-        String columns = insertColumns.stream()
-                .map(ColumnMetadata::getColumnName)
-                .collect(Collectors.joining(", "));
-
-        String values = insertColumns.stream()
-                .map(c -> {
-                    String v = c.resolveInsertValue();
-                    return v != null ? v : "#{model." + c.getFieldName() + "}";
-                })
-                .collect(Collectors.joining(", "));
-
         String updateSet = metadata.getUpdatableColumns().stream()
                 .map(c -> {
                     String v = c.resolveUpdateValue();
@@ -358,9 +378,41 @@ public class CrudSqlProvider {
                 })
                 .collect(Collectors.joining(", "));
 
-        return "INSERT INTO " + metadata.getTableName()
-                + " (" + columns + ") VALUES (" + values + ")"
-                + " ON DUPLICATE KEY UPDATE " + updateSet;
+        // INSERT 부분 — null 필드 동적 스킵
+        StringBuilder sb = new StringBuilder("<script>\nINSERT INTO ");
+        sb.append(metadata.getTableName()).append("\n");
+
+        sb.append("<trim prefix=\"(\" suffix=\")\" suffixOverrides=\",\">\n");
+        for (ColumnMetadata column : insertColumns) {
+            String insertValue = column.resolveInsertValue();
+            if (insertValue != null) {
+                sb.append(column.getColumnName()).append(",\n");
+            } else {
+                sb.append("<if test=\"model.").append(column.getFieldName()).append(" != null\">");
+                sb.append(column.getColumnName()).append(",");
+                sb.append("</if>\n");
+            }
+        }
+        sb.append("</trim>\n");
+
+        sb.append("<trim prefix=\"VALUES (\" suffix=\")\" suffixOverrides=\",\">\n");
+        for (ColumnMetadata column : insertColumns) {
+            String insertValue = column.resolveInsertValue();
+            if (insertValue != null) {
+                sb.append(insertValue).append(",\n");
+            } else {
+                sb.append("<if test=\"model.").append(column.getFieldName()).append(" != null\">");
+                sb.append("#{model.").append(column.getFieldName()).append("},");
+                sb.append("</if>\n");
+            }
+        }
+        sb.append("</trim>\n");
+
+        // ON DUPLICATE KEY UPDATE — 전체 컬럼 업데이트 (기존 동작 유지)
+        sb.append(" ON DUPLICATE KEY UPDATE ").append(updateSet);
+        sb.append("\n</script>");
+
+        return sb.toString();
     }
 
     // ──────────────────────────────────────────
