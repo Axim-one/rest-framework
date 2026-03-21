@@ -7,7 +7,7 @@ description: This skill should be used when the user asks to "create an entity",
 
 Spring Boot + MyBatis lightweight REST framework. Annotation-based entity mapping and repository proxy pattern that minimizes boilerplate while keeping MyBatis SQL control.
 
-**Version:** 1.2.1 | **Java 17+** | **Spring Boot 3.3+** | **MySQL 5.7+/8.0+** | **MyBatis 3.0+**
+**Version:** 1.2.2 | **Java 17+** | **Spring Boot 3.3+** | **MySQL 5.7+/8.0+** | **MyBatis 3.0+**
 
 ## Critical Rules
 
@@ -31,9 +31,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.2.1'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.2.1'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.2.1'
+    implementation 'com.github.Axim-one.rest-framework:core:1.2.2'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.2.2'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.2.2'
 }
 ```
 
