@@ -6,7 +6,10 @@ import one.axim.framework.rest.annotation.XHttpMethod;
 import one.axim.framework.rest.annotation.XRestAPI;
 import one.axim.framework.rest.annotation.XRestService;
 import one.axim.framework.rest.configuration.XRestEnvironment;
+import one.axim.framework.rest.exception.XRestException;
+import one.axim.framework.rest.handler.XErrorResponseHandler;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
@@ -29,6 +32,9 @@ public class XRestClientProxy implements InvocationHandler {
 
     @Autowired
     private RestTemplate restTemplate;
+
+    @Autowired
+    private ApplicationContext applicationContext;
 
     @Value("${axim.rest.gateway.host:@null}")
     private String gatewayHost;
@@ -133,36 +139,41 @@ public class XRestClientProxy implements InvocationHandler {
             path += separator + String.join("&", sortParams);
         }
 
-        if (typeReference != null) {
-            return switch (httpMethod) {
-                case GET -> requestObject != null
-                        ? client.get(path, typeReference, requestObject, headers, pathVariableMap)
-                        : client.get(path, typeReference, headers, pathVariableMap, parameterMap);
-                case POST -> requestObject != null
-                        ? client.post(path, typeReference, requestObject, headers, pathVariableMap)
-                        : client.post(path, typeReference, parameterMap, headers, pathVariableMap);
-                case PUT -> requestObject != null
-                        ? client.put(path, typeReference, requestObject, headers, pathVariableMap)
-                        : client.put(path, typeReference, parameterMap, headers, pathVariableMap);
-                case PATCH -> requestObject != null
-                        ? client.patch(path, typeReference, requestObject, headers, pathVariableMap)
-                        : client.patch(path, typeReference, parameterMap, headers, pathVariableMap);
-                case DELETE -> client.delete(path, typeReference, headers, pathVariableMap, parameterMap);
-            };
-        } else {
-            return switch (httpMethod) {
-                case GET -> client.get(path, returnValue, headers, pathVariableMap, parameterMap);
-                case POST -> requestObject != null
-                        ? client.post(path, returnValue, requestObject, headers, pathVariableMap)
-                        : client.post(path, returnValue, parameterMap, headers, pathVariableMap);
-                case PUT -> requestObject != null
-                        ? client.put(path, returnValue, requestObject, headers, pathVariableMap)
-                        : client.put(path, returnValue, parameterMap, headers, pathVariableMap);
-                case PATCH -> requestObject != null
-                        ? client.patch(path, returnValue, requestObject, headers, pathVariableMap)
-                        : client.patch(path, returnValue, parameterMap, headers, pathVariableMap);
-                case DELETE -> client.delete(path, returnValue, headers, pathVariableMap, parameterMap);
-            };
+        try {
+            if (typeReference != null) {
+                return switch (httpMethod) {
+                    case GET -> requestObject != null
+                            ? client.get(path, typeReference, requestObject, headers, pathVariableMap)
+                            : client.get(path, typeReference, headers, pathVariableMap, parameterMap);
+                    case POST -> requestObject != null
+                            ? client.post(path, typeReference, requestObject, headers, pathVariableMap)
+                            : client.post(path, typeReference, parameterMap, headers, pathVariableMap);
+                    case PUT -> requestObject != null
+                            ? client.put(path, typeReference, requestObject, headers, pathVariableMap)
+                            : client.put(path, typeReference, parameterMap, headers, pathVariableMap);
+                    case PATCH -> requestObject != null
+                            ? client.patch(path, typeReference, requestObject, headers, pathVariableMap)
+                            : client.patch(path, typeReference, parameterMap, headers, pathVariableMap);
+                    case DELETE -> client.delete(path, typeReference, headers, pathVariableMap, parameterMap);
+                };
+            } else {
+                return switch (httpMethod) {
+                    case GET -> client.get(path, returnValue, headers, pathVariableMap, parameterMap);
+                    case POST -> requestObject != null
+                            ? client.post(path, returnValue, requestObject, headers, pathVariableMap)
+                            : client.post(path, returnValue, parameterMap, headers, pathVariableMap);
+                    case PUT -> requestObject != null
+                            ? client.put(path, returnValue, requestObject, headers, pathVariableMap)
+                            : client.put(path, returnValue, parameterMap, headers, pathVariableMap);
+                    case PATCH -> requestObject != null
+                            ? client.patch(path, returnValue, requestObject, headers, pathVariableMap)
+                            : client.patch(path, returnValue, parameterMap, headers, pathVariableMap);
+                    case DELETE -> client.delete(path, returnValue, headers, pathVariableMap, parameterMap);
+                };
+            }
+        } catch (XRestException e) {
+            e.setRemoteServiceName(service.value());
+            throw e;
         }
     }
 
@@ -185,8 +196,30 @@ public class XRestClientProxy implements InvocationHandler {
             }
 
             client.setDebug(isDebug);
+
+            // 서비스명으로 에러 핸들러 Bean 조회 후 연결 (한 번만 실행, 캐싱됨)
+            XErrorResponseHandler handler = findErrorHandler(service.value());
+            if (handler != null) {
+                client.setErrorHandler(handler);
+            }
+
             return client;
         });
+    }
+
+    /**
+     * 서비스명 + "-error-handler" 컨벤션으로 Bean 조회.
+     * getOrCreateClient()의 computeIfAbsent에서만 호출되므로 서비스당 최초 1회만 실행.
+     */
+    private XErrorResponseHandler findErrorHandler(String serviceName) {
+        try {
+            return applicationContext.getBean(
+                    serviceName + "-error-handler",
+                    XErrorResponseHandler.class
+            );
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private XRestAPI getMethodApiAnnotation(Method method) {

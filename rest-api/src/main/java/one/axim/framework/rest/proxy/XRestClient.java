@@ -2,6 +2,7 @@ package one.axim.framework.rest.proxy;
 
 import one.axim.framework.rest.exception.UnavailableServerException;
 import one.axim.framework.rest.exception.XRestException;
+import one.axim.framework.rest.handler.XErrorResponseHandler;
 import one.axim.framework.rest.model.ApiError;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JavaType;
@@ -34,6 +35,7 @@ public class XRestClient {
     private final String serviceName;
     private final String serviceHost;
     private boolean isDebug = false;
+    private XErrorResponseHandler errorHandler;
 
     public XRestClient(String host, String serviceName, RestTemplate restTemplate) {
         this.serviceName = serviceName;
@@ -244,6 +246,10 @@ public class XRestClient {
         isDebug = debug;
     }
 
+    public void setErrorHandler(XErrorResponseHandler errorHandler) {
+        this.errorHandler = errorHandler;
+    }
+
     // ──────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────
@@ -273,17 +279,27 @@ public class XRestClient {
         HttpStatus status = HttpStatus.valueOf(response.getStatusCode().value());
         String body = response.getBody();
 
+        // 커스텀 핸들러 우선 시도
+        if (errorHandler != null) {
+            XRestException customException = errorHandler.handle(status, body);
+            if (customException != null) {
+                customException.setRawResponseBody(body);
+                throw customException;
+            }
+        }
+
+        // 기본 핸들러
         if (body == null || body.isBlank()) {
             throw new XRestException(status, new ApiError(status, status.getReasonPhrase(), null, false));
         }
 
         try {
             ApiError error = OBJECT_MAPPER.readValue(body, ApiError.class);
-            throw new XRestException(status, error);
+            throw new XRestException(status, error, body);
         } catch (XRestException e) {
             throw e;
         } catch (Exception e) {
-            throw new XRestException(status, new ApiError(status, body, e, false));
+            throw new XRestException(status, new ApiError(status, body, e, false), body);
         }
     }
 

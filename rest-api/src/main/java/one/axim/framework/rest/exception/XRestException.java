@@ -1,5 +1,6 @@
 package one.axim.framework.rest.exception;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import one.axim.framework.rest.model.ApiError;
 import org.springframework.http.HttpStatus;
 
@@ -15,6 +16,14 @@ public class XRestException extends RuntimeException {
     protected String description;
     protected Object[] args;
     protected Object data;
+
+    /** 원본 응답 바디 (항상 보존). 서버 측 로그/디버깅 전용 */
+    @JsonIgnore
+    protected String rawResponseBody;
+
+    /** 원격 서비스명 (프록시 경유 시 자동 설정) */
+    @JsonIgnore
+    protected String remoteServiceName;
 
     protected XRestException(HttpStatus status) {
         super();
@@ -57,6 +66,12 @@ public class XRestException extends RuntimeException {
         this.code = error.getCode();
         this.message = error.getMessage();
         this.description = error.getDescription();
+        this.data = error.getData();
+    }
+
+    public XRestException(HttpStatus status, ApiError error, String rawResponseBody) {
+        this(status, error);
+        this.rawResponseBody = rawResponseBody;
     }
 
     public Object[] getArgs() {
@@ -90,5 +105,21 @@ public class XRestException extends RuntimeException {
 
     public void setData(Object data) {
         this.data = data;
+    }
+
+    public String getRawResponseBody() {
+        return rawResponseBody;
+    }
+
+    public void setRawResponseBody(String rawResponseBody) {
+        this.rawResponseBody = rawResponseBody;
+    }
+
+    public String getRemoteServiceName() {
+        return remoteServiceName;
+    }
+
+    public void setRemoteServiceName(String remoteServiceName) {
+        this.remoteServiceName = remoteServiceName;
     }
 }

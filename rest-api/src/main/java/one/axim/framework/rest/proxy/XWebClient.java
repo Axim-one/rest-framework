@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import one.axim.framework.rest.exception.UnavailableServerException;
 import one.axim.framework.rest.exception.XRestException;
+import one.axim.framework.rest.handler.XErrorResponseHandler;
 import one.axim.framework.rest.model.ApiError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,7 @@ public class XWebClient {
 
     private final RestClient restClient;
     private boolean isDebug = false;
+    private XErrorResponseHandler errorHandler;
 
     public XWebClient(RestClient restClient) {
         this.restClient = restClient;
@@ -196,18 +198,29 @@ public class XWebClient {
         }
 
         byte[] bytes = body.readAllBytes();
+        String rawBody = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+
         if (bytes.length == 0) {
             throw new XRestException(status, new ApiError(status, status.getReasonPhrase(), null, false));
         }
 
+        // 커스텀 핸들러 우선 시도
+        if (errorHandler != null) {
+            XRestException customException = errorHandler.handle(status, rawBody);
+            if (customException != null) {
+                customException.setRawResponseBody(rawBody);
+                throw customException;
+            }
+        }
+
+        // 기본 핸들러
         try {
             ApiError error = OBJECT_MAPPER.readValue(bytes, ApiError.class);
-            throw new XRestException(status, error);
+            throw new XRestException(status, error, rawBody);
         } catch (XRestException e) {
             throw e;
         } catch (Exception e) {
-            String responseBody = new String(bytes);
-            throw new XRestException(status, new ApiError(status, responseBody, e, false));
+            throw new XRestException(status, new ApiError(status, rawBody, e, false), rawBody);
         }
     }
 
@@ -220,6 +233,12 @@ public class XWebClient {
 
     public void setDebug(boolean debug) {
         isDebug = debug;
+    }
+
+    /** 에러 핸들러 설정 (체이닝 지원) */
+    public XWebClient errorHandler(XErrorResponseHandler handler) {
+        this.errorHandler = handler;
+        return this;
     }
 
     // ──────────────────────────────────────────

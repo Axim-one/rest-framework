@@ -1,8 +1,12 @@
 package one.axim.framework.demo.restclient;
 
 import one.axim.framework.demo.user.User;
+import one.axim.framework.rest.exception.XRestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -84,5 +88,31 @@ public class RestClientTestController {
     @GetMapping("/error/no-api")
     public User nonExistentApi() {
         return userServiceClient.callNonExistentApi();
+    }
+
+    // ──────────────────────────────────────────
+    // Error propagation detail tests (Phase 1 verification)
+    // ──────────────────────────────────────────
+
+    /**
+     * Test 6: Verify rawResponseBody, remoteServiceName, data fields are preserved.
+     * Catches XRestException and returns the error details as JSON.
+     */
+    @GetMapping("/error/propagation-detail")
+    public Map<String, Object> errorPropagationDetail() {
+        try {
+            userServiceClient.getUserByStringId("abc"); // triggers 400 type mismatch
+        } catch (XRestException e) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("status", e.getStatus().value());
+            result.put("code", e.getCode());
+            result.put("message", e.getMessage());
+            result.put("description", e.getDescription());
+            result.put("data", e.getData());
+            result.put("rawResponseBody", e.getRawResponseBody());
+            result.put("remoteServiceName", e.getRemoteServiceName());
+            return result;
+        }
+        return Map.of("error", "no exception thrown");
     }
 }
