@@ -148,6 +148,36 @@ throw new UserException(UserException.DUPLICATE_EMAIL, "alice@example.com alread
 
 i18n via `messages.properties` / `messages_ko.properties`. Response format: `{"code": "2001", "message": "...", "description": "...", "data": null}`.
 
+### Error Propagation (REST Client)
+
+`@XRestService` / `XWebClient` 호출 시 원격 서비스 에러가 `XRestException`으로 전파됨. 원본 응답 바디와 서비스명이 보존됨:
+
+```java
+try {
+    Order order = orderClient.getOrder(id);
+} catch (XRestException e) {
+    e.getStatus();            // HTTP 상태코드 (400, 404, 500 등)
+    e.getCode();              // 에러 코드
+    e.getMessage();           // 에러 메시지
+    e.getData();              // 추가 데이터 (validation 필드 목록 등)
+    e.getRawResponseBody();   // 원본 JSON 문자열 — 어떤 포맷이든 직접 파싱 가능
+    e.getRemoteServiceName(); // 서비스명 (@XRestService value)
+}
+```
+
+외부 API의 에러 포맷이 다를 경우, `XErrorResponseHandler` Bean으로 커스텀 파싱 등록 가능:
+
+```java
+@Component("stripe-api-error-handler")  // @XRestService(value) + "-error-handler"
+public class StripeErrorHandler implements XErrorResponseHandler {
+    public XRestException handle(HttpStatus status, String responseBody) {
+        // 커스텀 파싱 → null 반환 시 기본 핸들러로 폴백
+    }
+}
+```
+
+For full error propagation details and handler patterns, see `references/rest-client-and-auth.md`.
+
 ## REST Client
 
 ### Declarative (@XRestService)
