@@ -1,44 +1,134 @@
 # REST Client & Authentication Reference
 
-## Declarative REST Client (@XRestService)
+## REST Client Strategy: @XRestService vs XWebClient
 
-Requires `@XRestServiceScan` on the application class.
+| Situation | Use | Reason |
+|---|---|---|
+| Internal microservice (fixed API contract) | `@XRestService` | Declarative, type-safe, XPagination auto-conversion |
+| External API / dynamic URL | `XWebClient` | Programmatic, flexible URL, custom headers |
+| File upload / Multipart | `XWebClient` (spec builder) | @XRestService only supports JSON body |
+| Service-to-service token forwarding | `@XRestService` + `@RequestHeader` | Declarative header passing |
+| One-off or test calls | `XWebClientFactory.create(url)` | No Bean registration needed |
 
-### Direct Mode vs Gateway Mode
+**CRITICAL:** Both clients share the same `RestTemplate`/`RestClient` connection pool configured via `axim.rest.client.*` properties.
+
+---
+
+## Setup Requirements
+
+### Application Class
 
 ```java
-// Direct Mode — host specified -> URL: {host}{path}
-@XRestService(value = "user-service", host = "${USER_SERVICE_HOST:http://localhost:8081}")
-public interface UserServiceClient { ... }
+@ComponentScan({"one.axim.framework.rest", "one.axim.framework.mybatis", "com.myapp"})
+@SpringBootApplication
+@XRestServiceScan("com.myapp.client")  // REQUIRED for @XRestService
+public class MyApplication { ... }
+```
 
-// Gateway Mode — host omitted -> URL: {gatewayHost}/{serviceName}/{version}{path}
+### Configuration Properties
+
+```properties
+# Connection pool (shared by XRestClient and XWebClient)
+axim.rest.client.pool-size=200                    # Max connections (default: 200)
+axim.rest.client.connection-request-timeout=30    # seconds (default: 30)
+axim.rest.client.response-timeout=30              # seconds (default: 30)
+
+# Debug logging (request/response URLs and bodies)
+axim.rest.debug=false                             # default: false
+
+# Gateway mode (for @XRestService without host)
+axim.rest.gateway.host=http://api-gateway:8080
+
+# XWebClient named beans
+axim.web-client.services.userClient=http://user-service:8080
+axim.web-client.services.orderClient=http://order-service:8080
+```
+
+---
+
+## @XRestService (Declarative REST Client)
+
+### Annotation Reference
+
+#### @XRestService
+
+| Attribute | Default | Description |
+|---|---|---|
+| `value` | `""` | Service name — Bean identifier, gateway routing path, error handler matching key |
+| `host` | `""` | Direct host URL (supports `${}` placeholders). Empty = gateway mode |
+| `version` | `""` | API version (gateway mode only, becomes URL path segment) |
+
+#### @XRestAPI
+
+| Attribute | Default | Description |
+|---|---|---|
+| `value` | `""` | API path (supports `{variable}` placeholders) |
+| `method` | `GET` | HTTP method: `GET`, `POST`, `PUT`, `DELETE`, `PATCH` |
+
+#### @XRestServiceScan
+
+| Attribute | Description |
+|---|---|
+| `value` | Package(s) to scan for `@XRestService` interfaces |
+
+### URL Construction
+
+```
+Direct Mode  (host specified):   {host}{@XRestAPI.value}
+Gateway Mode (host empty):       {gatewayHost}/{serviceName}/{version}{@XRestAPI.value}
+```
+
+```java
+// Direct: http://localhost:8081/users/1
+@XRestService(value = "user-service", host = "http://localhost:8081")
+// -> GET http://localhost:8081/users/1
+
+// Direct with env variable: ${USER_SERVICE_HOST}/users/1
+@XRestService(value = "user-service", host = "${USER_SERVICE_HOST:http://localhost:8081}")
+
+// Gateway: http://api-gateway:8080/user-service/v1/users/1
 @XRestService(value = "user-service", version = "v1")
-public interface UserServiceClient { ... }
+// -> requires axim.rest.gateway.host=http://api-gateway:8080
 ```
 
 ### Parameter Annotations
+
+Supports Spring's standard annotations on method parameters:
+
+| Annotation | Description | Example |
+|---|---|---|
+| `@PathVariable("name")` | URL path variable | `/users/{id}` -> `@PathVariable("id") Long id` |
+| `@RequestBody` | JSON request body | `@RequestBody UserCreateRequest request` |
+| `@RequestParam("name")` | Query parameter | `?status=ACTIVE` -> `@RequestParam("status") String status` |
+| `@RequestHeader("name")` | HTTP header | `@RequestHeader("Access-Token") String token` |
+| `XPagination` (no annotation) | Auto-converted to query params | `?page=1&size=20&sort=createdAt,DESC` |
 
 ```java
 @XRestService(value = "order-service", host = "${ORDER_SERVICE_HOST}")
 public interface OrderServiceClient {
 
+    // GET /orders/123
     @XRestAPI(value = "/orders/{id}", method = XHttpMethod.GET)
     Order getOrder(@PathVariable("id") Long id);
 
+    // POST /orders (JSON body)
     @XRestAPI(value = "/orders", method = XHttpMethod.POST)
     Order createOrder(@RequestBody OrderCreateRequest request);
 
+    // GET /orders?status=ACTIVE&keyword=test
     @XRestAPI(value = "/orders", method = XHttpMethod.GET)
     List<Order> search(@RequestParam("status") String status,
                        @RequestParam("keyword") String keyword);
 
+    // GET /orders with custom header
     @XRestAPI(value = "/orders", method = XHttpMethod.GET)
     List<Order> getOrders(@RequestHeader("X-Tenant-Id") String tenantId);
 
-    // XPagination auto-converted -> ?page=1&size=20&sort=createdAt,DESC
+    // GET /orders?page=1&size=20&sort=createdAt,DESC (XPagination auto-conversion)
     @XRestAPI(value = "/orders", method = XHttpMethod.GET)
     XPage<Order> listOrders(XPagination pagination);
 
+    // PUT /orders/123 with body + header (combined)
     @XRestAPI(value = "/orders/{id}", method = XHttpMethod.PUT)
     Order updateOrder(@PathVariable("id") Long id,
                       @RequestBody OrderUpdateRequest request,
@@ -46,28 +136,52 @@ public interface OrderServiceClient {
 }
 ```
 
-### Error Handling
+### Return Type Handling
+
+| Return Type | Behavior |
+|---|---|
+| `T` (simple class) | Deserialized via `ObjectMapper.readValue(body, T.class)` |
+| `List<T>`, `XPage<T>` (generic) | Deserialized via `ParameterizedTypeReference` — preserves generic type |
+| `String` | Raw response body returned as-is (no JSON parsing) |
+| `void` / `Void` | Response body ignored |
+| `null` response (2xx) | Returns `null` — no exception thrown |
+
+### Header Forwarding Pattern (Service-to-Service)
 
 ```java
-try {
-    Order order = orderClient.getOrder(id);
-} catch (XRestException e) {
-    e.getStatus();       // Original HTTP status (400, 404, 500, etc.)
-    e.getCode();         // Error code from ApiError
-    e.getMessage();      // Error message
-    e.getDescription();  // Additional description
+// Service A -> Service B: forward the caller's access token
+@RestController
+@RequiredArgsConstructor
+public class OrderController {
+    private final OrderServiceClient orderClient;
+
+    @GetMapping("/my-orders")
+    public List<Order> getMyOrders(UserSession session,
+                                   @RequestHeader("Access-Token") String token) {
+        // Forward token to downstream service
+        return orderClient.getMyOrders(session.getUserId(), token);
+    }
+}
+
+// OrderServiceClient
+@XRestService(value = "order-service", host = "${ORDER_SERVICE_HOST}")
+public interface OrderServiceClient {
+    @XRestAPI(value = "/orders", method = XHttpMethod.GET)
+    List<Order> getMyOrders(@RequestParam("userId") Long userId,
+                            @RequestHeader("Access-Token") String token);
 }
 ```
 
-Error propagation preserves the original server's HTTP status code and ApiError (code, message, description) through the proxy chain.
+---
 
-## XWebClient (RestClient-based Alternative)
+## XWebClient (Programmatic REST Client)
 
-For programmatic HTTP calls (not declarative proxy).
+### Bean Registration
 
-### Option 1: Declarative Bean Registration via Properties
+#### Option 1: Properties-based (Named beans)
 
 ```properties
+# application.properties — each entry creates a named XWebClient bean
 axim.web-client.services.userClient=http://user-service:8080
 axim.web-client.services.orderClient=http://order-service:8080
 ```
@@ -86,7 +200,7 @@ public class ExternalApiService {
 }
 ```
 
-### Option 2: Programmatic via XWebClientFactory
+#### Option 2: Factory (Dynamic URL)
 
 ```java
 @Service
@@ -102,64 +216,86 @@ public class ExternalApiService {
 }
 ```
 
+> `XWebClientFactory.create()` is **cached** by base URL via `ConcurrentHashMap` — safe to call repeatedly.
+
 ### API Reference
 
 ```java
-// Simple API
+// === Simple API (Class<T>) ===
 client.get("/users/{id}", User.class, id);
 client.post("/users", body, User.class);
 client.put("/users/{id}", body, User.class, id);
+client.patch("/users/{id}", body, User.class, id);
 client.delete("/users/{id}", Void.class, id);
 
-// Generic types
+// === Generic types (ParameterizedTypeReference<T>) ===
 client.get("/users", new ParameterizedTypeReference<List<User>>() {});
+client.post("/users/batch", bodyList, new ParameterizedTypeReference<List<User>>() {});
 
-// Builder API
+// === Builder API (custom headers, complex requests) ===
 client.spec()
         .get("/users?keyword=" + keyword)
         .header("X-API-Key", "my-key")
-        .body(requestBody)
+        .header("Accept-Language", "ko-KR")
         .retrieve(new ParameterizedTypeReference<List<User>>() {});
+
+client.spec()
+        .post("/orders")
+        .header("Authorization", "Bearer " + token)
+        .body(orderRequest)
+        .retrieve(Order.class);
+
+// === Error handler chaining ===
+XWebClient client = webClientFactory.create("https://api.stripe.com")
+        .errorHandler(new StripeErrorHandler());
 ```
+
+### @XRestService vs XWebClient Comparison
 
 | Feature | `@XRestService` | `XWebClient` |
 |---|---|---|
-| Style | Interface + annotations | Direct method calls |
+| Style | Interface + annotations (declarative) | Direct method calls (programmatic) |
 | Bean creation | `@XRestServiceScan` | Properties or `XWebClientFactory` |
 | Best for | Internal microservice calls | External API, dynamic URLs |
-| Pagination | Auto XPagination -> query params | Manual query string |
+| Pagination | Auto `XPagination` -> query params | Manual query string |
+| Custom headers | `@RequestHeader` per method | `.spec().header()` or global |
+| Error handler | Bean convention (`-error-handler`) | `.errorHandler()` chaining |
+| URL construction | Automatic (host + path) | Manual (base URL + path) |
+| Connection pool | Shared `RestTemplate` | Shared `RestClient` |
+
+---
 
 ## Error Propagation
 
-`@XRestService` / `XWebClient` 호출 시 원격 서비스가 에러를 반환하면, 프레임워크가 자동으로 `XRestException`에 원본 정보를 보존하여 전파.
+`@XRestService` / `XWebClient` call returns error -> framework auto-preserves all info in `XRestException`.
 
-### 전파 흐름
+### Flow
 
 ```
-[원격 서비스]                              [호출측]
+[Remote Service]                           [Caller]
 
-에러 발생 -> XExceptionHandler             XRestClient/XWebClient 수신
-  -> ApiError JSON 응답                      -> ApiError 파싱
-  { code, message, description, data }       -> XRestException 생성
-                                               (code, message, description, data 보존)
-                                               (rawResponseBody = 원본 JSON 전체)
+Error -> XExceptionHandler                 XRestClient/XWebClient receives
+  -> ApiError JSON response                  -> ApiError parsing
+  { code, message, description, data }       -> XRestException created
+                                               (code, message, description, data preserved)
+                                               (rawResponseBody = original JSON)
                                                (remoteServiceName = @XRestService value)
-                                             -> 호출측에서 catch 가능
+                                             -> caller can catch
 ```
 
-### XRestException 에러 정보 필드
+### XRestException Error Fields
 
-| 필드 | 설명 |
+| Field | Description |
 |---|---|
-| `getStatus()` | HTTP 상태코드 (400, 404, 500 등) — 원본 보존 |
-| `getCode()` | 에러 코드 (ApiError.code) |
-| `getMessage()` | 에러 메시지 |
-| `getDescription()` | 추가 설명 |
-| `getData()` | 추가 데이터 (validation 필드 목록 등) |
-| `getRawResponseBody()` | 원본 응답 바디 JSON 전체 (`@JsonIgnore` — 외부 노출 안됨) |
-| `getRemoteServiceName()` | 원격 서비스명 (`@JsonIgnore` — 외부 노출 안됨) |
+| `getStatus()` | HTTP status code (400, 404, 500, etc.) — preserved from origin |
+| `getCode()` | Error code (ApiError.code) |
+| `getMessage()` | Error message |
+| `getDescription()` | Additional description |
+| `getData()` | Additional data (validation field list, etc.) |
+| `getRawResponseBody()` | Original response body JSON (`@JsonIgnore` — not exposed to external clients) |
+| `getRemoteServiceName()` | Remote service name (`@JsonIgnore` — not exposed to external clients) |
 
-### 기본 사용 (Axim 프레임워크끼리)
+### Basic Usage (Axim Framework to Framework)
 
 ```java
 try {
@@ -167,33 +303,28 @@ try {
 } catch (XRestException e) {
     e.getStatus();            // 400
     e.getCode();              // "2001"
-    e.getMessage();           // "이미 존재하는 이메일"
+    e.getMessage();           // "Email already exists"
     e.getData();              // [{field: "email", errorMessage: "..."}]
     e.getRemoteServiceName(); // "user-service"
 }
 ```
 
-### 외부 API — raw body에서 직접 파싱
-
-ApiError 포맷이 아닌 외부 API 에러도 `getRawResponseBody()`로 원본 확보 후 직접 파싱 가능:
+### External API — Parse raw body directly
 
 ```java
 try {
     stripeClient.createCharge(request);
 } catch (XRestException e) {
-    // 원본 JSON에서 직접 파싱
     StripeError err = objectMapper.readValue(e.getRawResponseBody(), StripeError.class);
     log.error("[{}] Stripe error: {}", e.getRemoteServiceName(), err.getError().getMessage());
 }
 ```
 
-### 서비스별 에러 핸들러 (XErrorResponseHandler)
+### Per-Service Error Handler (XErrorResponseHandler)
 
-반복 파싱이 번거로운 서비스에 대해 `XErrorResponseHandler` Bean을 등록하면 자동 매칭됨.
-Bean 이름 컨벤션: **`@XRestService(value)` + `-error-handler`**
+Register a Bean to auto-match by convention: **`@XRestService(value)` + `-error-handler`**
 
 ```java
-// @XRestService(value = "blockchain-api") 에 매칭
 @Component("blockchain-api-error-handler")
 public class BlockchainApiErrorHandler implements XErrorResponseHandler {
 
@@ -202,37 +333,21 @@ public class BlockchainApiErrorHandler implements XErrorResponseHandler {
     @Override
     public XRestException handle(HttpStatus status, String responseBody) {
         try {
-            // Node.js 에러 포맷: { "code": "WALLET_NOT_FOUND", "error": "...", "detail": "..." }
             JsonNode node = objectMapper.readTree(responseBody);
-
             ApiError apiError = new ApiError();
             apiError.setCode(node.path("code").asText(null));
             apiError.setMessage(node.path("error").asText(null));
             apiError.setDescription(node.path("detail").asText(null));
-
             return new XRestException(status, apiError, responseBody);
         } catch (Exception e) {
-            return null;  // null 반환 -> 기본 핸들러(ApiError 파싱)로 폴백
+            return null;  // null -> fallback to default handler
         }
     }
 }
 ```
 
-`@XRestService` 어노테이션 변경 없음:
+XWebClient uses chaining:
 ```java
-@XRestService(value = "blockchain-api", host = "${BLOCKCHAIN_API_HOST}")
-public interface BlockchainApiClient { ... }
-```
-
-### XWebClient에 에러 핸들러 설정
-
-`XWebClient`는 프로그래밍 방식으로 핸들러 설정 (체이닝 지원):
-
-```java
-XWebClient client = webClientFactory.create("https://api.stripe.com")
-    .errorHandler(new StripeErrorHandler());
-
-// 또는 인라인 람다
 XWebClient client = webClientFactory.create("https://api.external.com")
     .errorHandler((status, body) -> {
         JsonNode node = objectMapper.readTree(body);
@@ -243,17 +358,104 @@ XWebClient client = webClientFactory.create("https://api.external.com")
     });
 ```
 
-### 에러 핸들러 동작 순서
+### Handler Execution Order
 
-1. 커스텀 `XErrorResponseHandler` Bean 있음? -> 커스텀 핸들러 실행
-2. 커스텀 핸들러가 `null` 반환? -> 기본 핸들러(ApiError 파싱)로 폴백
-3. 커스텀 핸들러 Bean 없음? -> 기본 핸들러 직접 실행
+1. Custom `XErrorResponseHandler` Bean exists? -> execute custom handler
+2. Custom handler returns `null`? -> fallback to default handler (ApiError parsing)
+3. No custom handler Bean? -> default handler directly
 
-### 주의사항
+---
 
-- `rawResponseBody`와 `remoteServiceName`은 `@JsonIgnore`로 외부 클라이언트에 노출되지 않음. 서버 측 로그/디버깅 전용.
-- 핸들러 Bean은 `getOrCreateClient()` 의 `computeIfAbsent`에서 한 번만 조회됨 — 매 요청마다 Bean 조회 없음.
-- 핸들러가 없어도 `getRawResponseBody()`로 어떤 포맷이든 직접 파싱 가능.
+## REST Client Common Pitfalls
+
+### 1. Missing @XRestServiceScan
+
+```java
+// WRONG — @XRestService beans not created, injection fails
+@SpringBootApplication
+public class MyApplication { ... }
+
+// CORRECT
+@SpringBootApplication
+@XRestServiceScan("com.myapp.client")
+public class MyApplication { ... }
+```
+
+### 2. @PathVariable value must match exactly
+
+```java
+// WRONG — variable name mismatch
+@XRestAPI(value = "/users/{id}", method = XHttpMethod.GET)
+User getUser(@PathVariable("userId") Long id);  // "userId" != "id"
+
+// CORRECT
+@XRestAPI(value = "/users/{id}", method = XHttpMethod.GET)
+User getUser(@PathVariable("id") Long id);
+```
+
+### 3. @RequestParam creates query string, NOT form data
+
+```java
+// This creates: GET /orders?status=ACTIVE (query string)
+@XRestAPI(value = "/orders", method = XHttpMethod.GET)
+List<Order> search(@RequestParam("status") String status);
+
+// For form data, use @RequestBody with Map
+@XRestAPI(value = "/auth/token", method = XHttpMethod.POST)
+TokenResponse getToken(@RequestBody Map<String, String> formData);
+```
+
+### 4. XPagination parameter needs no annotation
+
+```java
+// WRONG — don't annotate XPagination
+@XRestAPI(value = "/users", method = XHttpMethod.GET)
+XPage<User> list(@RequestParam("pagination") XPagination pagination);
+
+// CORRECT — framework auto-detects and converts
+@XRestAPI(value = "/users", method = XHttpMethod.GET)
+XPage<User> list(XPagination pagination);
+// -> ?page=1&size=20&sort=createdAt,DESC (auto-converted)
+```
+
+### 5. Direct mode host with env variable
+
+```java
+// WRONG — literal string, not resolved
+@XRestService(value = "user-service", host = "USER_SERVICE_HOST")
+
+// CORRECT — Spring placeholder syntax
+@XRestService(value = "user-service", host = "${USER_SERVICE_HOST:http://localhost:8081}")
+```
+
+### 6. @XRestAPI missing on method
+
+```java
+@XRestService(value = "user-service", host = "...")
+public interface UserServiceClient {
+    // WRONG — no @XRestAPI, returns null silently
+    User getUser(Long id);
+
+    // CORRECT
+    @XRestAPI(value = "/users/{id}", method = XHttpMethod.GET)
+    User getUser(@PathVariable("id") Long id);
+}
+```
+
+### 7. Debug mode logs all request/response
+
+```properties
+# Enable for development only — logs all URLs and response bodies
+axim.rest.debug=true
+```
+
+This adds `INFO` level logs:
+```
+GET request url :: http://user-service:8080/users/1
+response status : 200 body :: {"id":1,"name":"Alice",...}
+```
+
+---
 
 ## Session / Token Authentication
 

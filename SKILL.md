@@ -178,9 +178,20 @@ public class StripeErrorHandler implements XErrorResponseHandler {
 
 For full error propagation details and handler patterns, see `references/rest-client-and-auth.md`.
 
-## REST Client
+## REST Client Strategy
 
-### Declarative (@XRestService)
+Two HTTP client options. Choose based on use case:
+
+| Situation | Use | Reason |
+|---|---|---|
+| Internal microservice (fixed API contract) | `@XRestService` | 선언적, 타입 안전, XPagination 자동 변환 |
+| External API / Dynamic URL | `XWebClient` | 프로그래밍 방식, URL 유연, 헤더 자유 설정 |
+| 파일 업로드 / Multipart | `XWebClient` (spec builder) | @XRestService는 JSON body만 지원 |
+| Service-to-service 토큰 포워딩 | `@XRestService` + `@RequestHeader` | 선언적 헤더 전달 |
+
+### @XRestService (Declarative)
+
+Requires `@XRestServiceScan` on application class. Interface + annotation, JDK Proxy가 자동 생성.
 
 ```java
 @XRestService(value = "user-service", host = "${USER_SERVICE_HOST:http://localhost:8081}")
@@ -190,19 +201,37 @@ public interface UserServiceClient {
 
     @XRestAPI(value = "/users", method = XHttpMethod.POST)
     User createUser(@RequestBody UserCreateRequest request);
+
+    @XRestAPI(value = "/users", method = XHttpMethod.GET)
+    XPage<User> listUsers(XPagination pagination);  // auto -> ?page=1&size=20&sort=...
+
+    @XRestAPI(value = "/users/{id}", method = XHttpMethod.PUT)
+    User updateUser(@PathVariable("id") Long id,
+                    @RequestBody UserUpdateRequest request,
+                    @RequestHeader("Access-Token") String token);  // header forwarding
 }
 ```
 
-### Programmatic (XWebClient)
+### XWebClient (Programmatic)
 
 ```java
-@Qualifier("userClient")
-private final XWebClient userClient;
-
+// Option 1: Properties 기반 Bean
+@Qualifier("userClient") private final XWebClient userClient;
 User user = userClient.get("/users/{id}", User.class, id);
+
+// Option 2: Factory로 동적 생성
+XWebClient client = webClientFactory.create("https://api.external.com");
+List<User> users = client.get("/users", new ParameterizedTypeReference<>() {});
+
+// Option 3: Builder API (커스텀 헤더, 복잡한 요청)
+client.spec()
+    .post("/orders")
+    .header("X-API-Key", apiKey)
+    .body(request)
+    .retrieve(Order.class);
 ```
 
-For full REST client details, XWebClient API, session/token auth, see `references/rest-client-and-auth.md`.
+For full annotation reference, parameter details, pitfalls, and patterns, see `references/rest-client-and-auth.md`.
 
 ## Architecture
 
@@ -230,6 +259,6 @@ For detailed patterns, examples, and advanced techniques:
 
 - **`references/entity-and-repository.md`** — Entity mapping, annotations, @XDefaultValue, @XColumn rules, repository API, CRUD examples, composite keys, query derivation
 - **`references/query-and-pagination.md`** — Custom mapper patterns, pagination details, @XPaginationDefault, controller + service examples
-- **`references/rest-client-and-auth.md`** — @XRestService (Direct/Gateway mode), XWebClient, session/token authentication
+- **`references/rest-client-and-auth.md`** — REST client strategy guide, @XRestService/@XRestAPI annotation reference, XWebClient API, header forwarding, error propagation, XErrorResponseHandler, common pitfalls, session/token authentication
 - **`references/setup-and-config.md`** — Application setup, application.properties, mybatis-config.xml, Maven installation, i18n
 - **`references/conventions-and-pitfalls.md`** — Javadoc conventions, common pitfalls, security warnings
