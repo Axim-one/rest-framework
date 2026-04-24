@@ -9,3 +9,12 @@ CREATE TABLE IF NOT EXISTS users (
     PRIMARY KEY (id),
     UNIQUE KEY uk_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Regression scenario for XResultInterceptor findOne bug:
+-- single PK that is *not* auto-increment (PK = FK pattern).
+CREATE TABLE IF NOT EXISTS user_profile (
+    user_id  INT          NOT NULL,
+    nickname VARCHAR(100),
+    bio      VARCHAR(500),
+    PRIMARY KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

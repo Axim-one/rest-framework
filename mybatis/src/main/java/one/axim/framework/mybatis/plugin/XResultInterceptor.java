@@ -46,6 +46,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -73,6 +74,7 @@ public class XResultInterceptor implements Interceptor {
     static final java.time.format.DateTimeFormatter dtFormat =
             java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Map<String, Class<?>> RETURN_TYPE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, Boolean> GENERIC_RETURN_CACHE = new ConcurrentHashMap<>();
     private final Logger log = LoggerFactory.getLogger(XResultInterceptor.class);
 
     @Override
@@ -95,17 +97,38 @@ public class XResultInterceptor implements Interceptor {
         }
 
 
-        // Handle dynamic result type for XMapperParameter
+        // Handle dynamic result type for XMapperParameter.
+        //
+        // The caller-declared resultClass (XMapperParameter.resultClass) must take
+        // precedence over MyBatis's inferred ResultMap type whenever:
+        //   (a) caller declared a non-scalar entity class as the expected result, AND
+        //   (b) the mapper method's declared return type is generic (<T> T / <T> List<T>),
+        //       i.e. erased to Object or Collection at runtime.
+        //
+        // Without clause (b) we would also override scalar-returning methods like
+        // `long count(XMapperParameter)` — CommonMapper.count() intentionally has a
+        // concrete `long` return type, and callers still set resultClass on the
+        // parameter because CrudSqlProvider needs it to derive the table name.
+        //
+        // Without clause (a) we would attempt to map a SELECT result to a scalar,
+        // which is never the intent of setResultClass().
         if (parameter instanceof XMapperParameter xMapperParameter) {
             ResultMap resultMap = mappedStatement.getResultMaps().get(0);
-            if (!ColumnSpec.isNormalType(resultMap.getType())) {
-                if (xMapperParameter.getResultClass() != null) {
-                    MappedStatement newMs =
-                            copyFromMappedStatement(mappedStatement, mappedStatement.getSqlSource(), resultMap,
-                                    xMapperParameter.getResultClass());
-                    queryArgs[MAPPED_STATEMENT_INDEX] = newMs;
-                    mappedStatement = newMs; // Use the new MappedStatement
-                }
+            Class<?> declaredResult = xMapperParameter.getResultClass();
+            Class<?> inferredResult = resultMap.getType();
+
+            boolean needsSwap =
+                    declaredResult != null
+                            && inferredResult != declaredResult
+                            && !ColumnSpec.isNormalType(declaredResult)
+                            && mapperReturnsGenericType(mappedStatement.getId());
+
+            if (needsSwap) {
+                MappedStatement newMs =
+                        copyFromMappedStatement(mappedStatement, mappedStatement.getSqlSource(), resultMap,
+                                declaredResult);
+                queryArgs[MAPPED_STATEMENT_INDEX] = newMs;
+                mappedStatement = newMs; // Use the new MappedStatement
             }
         }
 
@@ -512,6 +535,42 @@ public class XResultInterceptor implements Interceptor {
                 log.warn("Failed to resolve return type for mapper method: {}", id, e);
             }
             return null;
+        });
+    }
+
+    /**
+     * mapper 메서드의 선언된 반환 타입이 제네릭으로 erasure 된 Object/Collection 인지 판정.
+     *
+     * <p>findById: {@code <T> T findById(...)} → Object → true
+     * <p>findAll:  {@code <T> List<T> findAll(...)} → List → true
+     * <p>count:    {@code long count(...)} → long → false
+     *
+     * <p>이 구분이 필요한 이유는 warm-path 캐시 오염 상황에서 findById 의
+     * {@code ResultMap.getType()} 이 scalar (Long) 로 잘못 고정되는 케이스를
+     * {@code XMapperParameter.resultClass} 로 덮어써야 하기 때문이며,
+     * 반대로 count 같은 concrete scalar 반환 메서드에서는 덮어쓰면 안 되기 때문.
+     */
+    private boolean mapperReturnsGenericType(String msId) {
+
+        return GENERIC_RETURN_CACHE.computeIfAbsent(msId, id -> {
+            try {
+                int lastDot = id.lastIndexOf('.');
+                if (lastDot < 0) return false;
+
+                String className = id.substring(0, lastDot);
+                String methodName = id.substring(lastDot + 1);
+
+                Class<?> mapperClass = Class.forName(className);
+                for (Method method : mapperClass.getMethods()) {
+                    if (method.getName().equals(methodName)) {
+                        Class<?> raw = method.getReturnType();
+                        return raw == Object.class || Collection.class.isAssignableFrom(raw);
+                    }
+                }
+            } catch (ClassNotFoundException e) {
+                log.warn("Failed to resolve mapper return type: {}", id, e);
+            }
+            return false;
         });
     }
 
