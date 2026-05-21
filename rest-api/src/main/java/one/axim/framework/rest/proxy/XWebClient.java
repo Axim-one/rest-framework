@@ -2,6 +2,7 @@ package one.axim.framework.rest.proxy;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import one.axim.framework.rest.exception.UnavailableServerException;
 import one.axim.framework.rest.exception.XRestException;
 import one.axim.framework.rest.handler.XErrorResponseHandler;
@@ -226,6 +227,7 @@ public class XWebClient {
 
     private static ObjectMapper createObjectMapper() {
         ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
         mapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         return mapper;

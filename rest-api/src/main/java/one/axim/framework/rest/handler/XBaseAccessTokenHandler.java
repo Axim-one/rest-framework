@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import one.axim.framework.rest.configuration.XRestEnvironment;
 import one.axim.framework.rest.exception.UnAuthorizedException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,7 +21,14 @@ import java.util.Base64;
 public class XBaseAccessTokenHandler implements XAccessTokenParseHandler {
 
     private static final Logger log = LoggerFactory.getLogger(XBaseAccessTokenHandler.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = createObjectMapper();
+
+    private static ObjectMapper createObjectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        return mapper;
+    }
     private static final String HMAC_ALGORITHM = "HmacSHA256";
 
     @Override
