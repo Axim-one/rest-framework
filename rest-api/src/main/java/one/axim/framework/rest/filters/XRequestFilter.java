@@ -21,6 +21,12 @@ public class XRequestFilter implements Filter {
             "authorization", "cookie", "access-token", "x-api-key", "proxy-authorization"
     );
 
+    private final XRestEnvironment environment;
+
+    public XRequestFilter(XRestEnvironment environment) {
+        this.environment = environment;
+    }
+
     @Value("${spring.application.name}")
     private String applicationName;
 
@@ -42,11 +48,8 @@ public class XRequestFilter implements Filter {
             MDC.put("SERVICE_ID", applicationName);
             MDC.put("VERSION", applicationVersion);
 
-            XRestEnvironment env = XRestEnvironment.getInstance();
-            if (env != null) {
-                MDC.put("LOCAL_IP", env.getServerIp());
-                MDC.put("LOCAL_HOSTNAME", env.getServerHostName());
-            }
+            MDC.put("LOCAL_IP", environment.getServerIp());
+            MDC.put("LOCAL_HOSTNAME", environment.getServerHostName());
             MDC.put("REMOTE_IP", req.getRemoteAddr());
 
             // REQUEST HEADER
@@ -68,7 +71,7 @@ public class XRequestFilter implements Filter {
 
             MDC.put("PARAMETER", getRequestParameterString(req));
 
-            if (env != null && env.isDevelop()) {
+            if (environment.isDevelop()) {
 
                 if (contentType != null && contentType.startsWith("application/json")) {
 

@@ -36,6 +36,9 @@ public class XRestClientProxy implements InvocationHandler {
     @Autowired
     private ApplicationContext applicationContext;
 
+    @Autowired
+    private XRestEnvironment xRestEnvironment;
+
     @Value("${axim.rest.gateway.host:@null}")
     private String gatewayHost;
 
@@ -189,7 +192,7 @@ public class XRestClientProxy implements InvocationHandler {
                 client = new XRestClient(gatewayHost, service.value(), service.version(), restTemplate);
             } else {
                 if (host.contains("${")) {
-                    host = XRestEnvironment.getInstance().resolvePlaceholders(host);
+                    host = xRestEnvironment.resolvePlaceholders(host);
                 }
                 // Direct host mode — host points directly to the service
                 client = new XRestClient(host, service.value(), restTemplate);

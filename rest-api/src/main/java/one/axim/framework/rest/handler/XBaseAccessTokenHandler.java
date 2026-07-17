@@ -1,13 +1,14 @@
 package one.axim.framework.rest.handler;
 
 import jakarta.servlet.http.HttpServletRequest;
-import one.axim.framework.rest.configuration.XRestEnvironment;
 import one.axim.framework.rest.exception.UnAuthorizedException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -22,6 +23,12 @@ public class XBaseAccessTokenHandler implements XAccessTokenParseHandler {
 
     private static final Logger log = LoggerFactory.getLogger(XBaseAccessTokenHandler.class);
     private static final ObjectMapper OBJECT_MAPPER = createObjectMapper();
+
+    @Value("${axim.rest.session.secret-key:#{null}}")
+    private String secretKey;
+
+    @Value("${axim.rest.session.token-expire-days:90}")
+    private int tokenExpireDays;
 
     private static ObjectMapper createObjectMapper() {
         ObjectMapper mapper = new ObjectMapper();
@@ -99,11 +106,25 @@ public class XBaseAccessTokenHandler implements XAccessTokenParseHandler {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
     }
 
-    private String getSecretKey() {
-        XRestEnvironment env = XRestEnvironment.getInstance();
-        if (env == null) {
-            return null;
+    @PostConstruct
+    void warnIfSecretKeyMissing() {
+        if (secretKey == null || secretKey.isBlank()) {
+            log.warn("axim.rest.session.secret-key is not configured. "
+                    + "Access tokens are issued as unsigned plain Base64 and can be forged by anyone. "
+                    + "Configure a secret key before deploying to production.");
         }
-        return env.getValue("axim.rest.session.secret-key");
+    }
+
+    /**
+     * 토큰 서명에 쓸 secret key를 반환한다. 미설정이면 null.
+     * 서브클래스가 오버라이드해 다른 소스에서 공급할 수 있다.
+     */
+    protected String getSecretKey() {
+        return secretKey;
+    }
+
+    @Override
+    public int getTokenExpireDays() {
+        return tokenExpireDays;
     }
 }
