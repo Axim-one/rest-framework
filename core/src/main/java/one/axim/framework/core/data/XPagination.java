@@ -49,6 +49,19 @@ public class XPagination {
         orders = new ArrayList<>();
     }
 
+    /**
+     * 조회 시작 위치를 반환한다.
+     *
+     * <p><strong>우선순위:</strong> {@code page > 0 && size > 0}이면 항상
+     * {@code (page - 1) * size}로 계산한 값을 반환하며, {@link #setOffset(int)}으로
+     * 설정한 값은 무시된다. {@code page} 기본값이 1, {@code size} 기본값이 20이므로
+     * 기본 상태에서는 계산식이 항상 적용된다.</p>
+     *
+     * <p>{@code setOffset()} 값을 쓰려면 {@code page} 또는 {@code size}를 0으로
+     * 설정해 계산식을 비활성화해야 한다.</p>
+     *
+     * @return 조회 시작 위치 (0-based)
+     */
     public int getOffset() {
 
         if (page > 0 && size > 0) {

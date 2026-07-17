@@ -21,6 +21,17 @@ public class XRequestFilter implements Filter {
             "authorization", "cookie", "access-token", "x-api-key", "proxy-authorization"
     );
 
+    private static final Set<String> SENSITIVE_PARAMS = Set.of(
+            "password", "passwd", "pwd", "secret", "token",
+            "access-token", "accesstoken", "api-key", "apikey", "credential"
+    );
+
+    private final XRestEnvironment environment;
+
+    public XRequestFilter(XRestEnvironment environment) {
+        this.environment = environment;
+    }
+
     @Value("${spring.application.name}")
     private String applicationName;
 
@@ -42,11 +53,8 @@ public class XRequestFilter implements Filter {
             MDC.put("SERVICE_ID", applicationName);
             MDC.put("VERSION", applicationVersion);
 
-            XRestEnvironment env = XRestEnvironment.getInstance();
-            if (env != null) {
-                MDC.put("LOCAL_IP", env.getServerIp());
-                MDC.put("LOCAL_HOSTNAME", env.getServerHostName());
-            }
+            MDC.put("LOCAL_IP", environment.getServerIp());
+            MDC.put("LOCAL_HOSTNAME", environment.getServerHostName());
             MDC.put("REMOTE_IP", req.getRemoteAddr());
 
             // REQUEST HEADER
@@ -68,7 +76,7 @@ public class XRequestFilter implements Filter {
 
             MDC.put("PARAMETER", getRequestParameterString(req));
 
-            if (env != null && env.isDevelop()) {
+            if (environment.isDevelop()) {
 
                 if (contentType != null && contentType.startsWith("application/json")) {
 
@@ -99,8 +107,12 @@ public class XRequestFilter implements Filter {
         final StringBuilder paramSb = new StringBuilder();
         Map<String, String[]> params = request.getParameterMap();
 
-        params.forEach((s, strings) -> {
-            paramSb.append(String.format("%s => %s, ", s, String.join(", ", strings)));
+        params.forEach((name, values) -> {
+            String value = SENSITIVE_PARAMS.contains(name.toLowerCase())
+                    ? "***"
+                    : String.join(", ", values);
+
+            paramSb.append(String.format("%s => %s, ", name, value));
         });
 
         return paramSb.toString();

@@ -226,7 +226,9 @@ public class XRepositoryProxy implements InvocationHandler {
 
         XMapperParameter insertParameter = new XMapperParameter(modelList);
         insertParameter.setResultClass(entityMetadata.getModelClass());
-        return commonMapper.insertAll(insertParameter);
+
+        Long affectedRows = commonMapper.insertAll(insertParameter);
+        return affectedRows == null ? 0 : affectedRows.intValue();
     }
 
     private Object handleUpdate(Object model) {

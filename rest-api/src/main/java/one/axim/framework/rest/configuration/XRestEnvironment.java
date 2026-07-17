@@ -12,8 +12,6 @@ import java.net.UnknownHostException;
 @Component
 public class XRestEnvironment {
 
-    private static volatile XRestEnvironment instance;
-
     private final org.springframework.core.env.Environment springEnvironment;
     private final String serverIp;
     private final String serverHostName;
@@ -33,11 +31,6 @@ public class XRestEnvironment {
         this.serverIp = ip;
         this.serverHostName = hostName;
 
-        instance = this;
-    }
-
-    public static XRestEnvironment getInstance() {
-        return instance;
     }
 
     public Integer getIntValue(String name) {

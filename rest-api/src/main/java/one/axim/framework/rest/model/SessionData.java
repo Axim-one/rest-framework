@@ -1,6 +1,5 @@
 package one.axim.framework.rest.model;
 
-import one.axim.framework.rest.configuration.XRestEnvironment;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.LocalDateTime;
@@ -12,8 +11,6 @@ import java.time.format.DateTimeFormatter;
 public class SessionData {
 
     private static final DateTimeFormatter FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-
-    private static final int DEFAULT_TOKEN_EXPIRE_DAYS = 90;
 
     private String sessionId;
 
@@ -48,21 +45,17 @@ public class SessionData {
         this.createDate = createDate;
     }
 
+    /**
+     * 토큰 생성 시각으로부터 {@code expireDays}일이 지났는지 판단한다.
+     *
+     * @param expireDays 토큰 유효 일수
+     * @return 만료되었거나 {@code createDate}를 해석할 수 없으면 true
+     */
     @JsonIgnore
-    public boolean isExpire() {
-
-        int nDay = DEFAULT_TOKEN_EXPIRE_DAYS;
-        XRestEnvironment env = XRestEnvironment.getInstance();
-        if (env != null) {
-            Integer configured = env.getIntValue("axim.rest.session.token-expire-days");
-            if (configured != null) {
-                nDay = configured;
-            }
-        }
-
+    public boolean isExpire(int expireDays) {
         try {
             LocalDateTime tokenDt = LocalDateTime.parse(this.createDate, FORMAT);
-            return tokenDt.plusDays(nDay).isBefore(LocalDateTime.now());
+            return tokenDt.plusDays(expireDays).isBefore(LocalDateTime.now());
         } catch (Exception e) {
             return true;
         }

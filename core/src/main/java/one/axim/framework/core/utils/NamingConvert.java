@@ -16,15 +16,19 @@ public class NamingConvert {
     public static String toCamelCase(String value) {
         if (value == null || value.isEmpty()) return value;
 
-        StringBuilder sb = new StringBuilder(value);
+        StringBuilder sb = new StringBuilder(value.length());
+        boolean upperNext = false;
 
-        for (int i = 0; i < sb.length(); i++) {
-            if (sb.charAt(i) == '_') {
-                sb.deleteCharAt(i);
-                if (i < sb.length()) {
-                    sb.replace(i, i + 1, String.valueOf(Character.toUpperCase(sb.charAt(i))));
-                }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+
+            if (c == '_') {
+                upperNext = true;
+                continue;
             }
+
+            sb.append(upperNext ? Character.toUpperCase(c) : c);
+            upperNext = false;
         }
 
         return sb.toString();

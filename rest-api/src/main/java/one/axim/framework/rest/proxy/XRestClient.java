@@ -305,11 +305,17 @@ public class XRestClient {
         }
     }
 
+    /**
+     * 서비스 호스트와 경로를 합쳐 요청 URL을 만든다.
+     *
+     * <p>{@code serviceHost}에 스킴이 없으면 {@code https://}를 붙인다.
+     * 평문 HTTP를 쓰려면 설정에 {@code http://}를 명시해야 한다.</p>
+     */
     private String makeServiceUrl(String url) {
         if (this.serviceHost.startsWith("http://") || this.serviceHost.startsWith("https://")) {
             return this.serviceHost + (url.startsWith("/") ? "" : "/") + url;
         } else {
-            return "http://" + this.serviceHost + (url.startsWith("/") ? "" : "/") + url;
+            return "https://" + this.serviceHost + (url.startsWith("/") ? "" : "/") + url;
         }
     }
 
