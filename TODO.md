@@ -2,31 +2,11 @@
 
 ## High Priority
 
-### Architecture
-- [ ] `XRestEnvironment` 정적 싱글톤 제거 — Spring DI로 전환
-  - `SessionData.isExpire()`, `XRequestFilter`, `XBaseAccessTokenHandler`, `XRestClientProxy`에서 사용 중
-  - 테스트 격리 및 숨은 의존성 제거를 위해 필요
-- [ ] `XResultInterceptor.setParameters()` MyBatis 내부 로직 복제 — MyBatis 버전 업그레이드 시 깨질 위험
-- [ ] `IXRepository.saveAll()` 반환 타입 불일치 — 인터페이스는 `K` (PK), 실제 반환은 `Long` (affected rows)
-
-### Security
-- [ ] Secret key 미설정 시 plain Base64 토큰 허용 — 최소 WARNING 로그 출력
-- [ ] `XRestClient.makeServiceUrl()` 기본 스킴 `http://` → `https://`로 변경
-- [ ] `XSessionResolver` — `xAccessTokenParseHandler`가 null이면 인증 무시됨 (보안 갭)
-- [ ] `XRequestFilter` — 요청 파라미터 마스킹 미적용 (password 등 평문 로깅)
-
-### Code Quality
-- [ ] 테스트 작성 — core 모듈 테스트 0개, 전체적으로 테스트 커버리지 부족
-  - `NamingConvert.toCamelCase` 연속 언더스코어 버그 검증
-  - `XPage.setPageRowsByObject` 타입 안전성
-  - `XPagination.getOffset()` offset/page 우선순위
-
 ---
 
 ## Medium Priority
 
 ### Code Quality
-- [ ] `NamingConvert.toCamelCase` — 연속 언더스코어(`"a__b"`) 처리 버그 수정
 - [ ] `NamingConvert` 유틸리티 클래스 — `final` + `private` 생성자 추가
 - [ ] `NamingConvert.toCamelCaseByClassName` — null 파라미터 체크 추가
 - [ ] `XRestException` — `description`, `data` setter 제거, 불변 설계
@@ -40,10 +20,12 @@
 - [ ] `XDirection.fromString` — `catch (Exception)` → `catch (IllegalArgumentException)` 축소
 - [ ] `getAllFields()` 중복 — `XResultInterceptor`와 `EntityMetadataFactory`에서 공유 유틸로 추출
 
+### Security
+- [ ] `XRequestFilter` — develop 프로파일에서 JSON 요청 본문을 마스킹 없이 MDC에 기록 (password 등 평문 로깅)
+
 ### API Design
 - [ ] `XAbstractController.log()/error()` — 항상 `XAbstractController` 로거 사용, 서브클래스 로거 미반영
 - [ ] `XExceptionHandler` — 4xx 예외를 `log.error()` → `log.warn()`으로 변경
-- [ ] `XPagination` — offset/page 우선순위 규칙 문서화 또는 하나로 통일
 - [ ] `UnAuthorizedException` → `UnauthorizedException` 네이밍 수정
 - [ ] `IXRepository` — `deleteById`/`delete`/`remove` 중복 메서드 정리
 
