@@ -21,6 +21,11 @@ public class XRequestFilter implements Filter {
             "authorization", "cookie", "access-token", "x-api-key", "proxy-authorization"
     );
 
+    private static final Set<String> SENSITIVE_PARAMS = Set.of(
+            "password", "passwd", "pwd", "secret", "token",
+            "access-token", "accesstoken", "api-key", "apikey", "credential"
+    );
+
     private final XRestEnvironment environment;
 
     public XRequestFilter(XRestEnvironment environment) {
@@ -102,8 +107,12 @@ public class XRequestFilter implements Filter {
         final StringBuilder paramSb = new StringBuilder();
         Map<String, String[]> params = request.getParameterMap();
 
-        params.forEach((s, strings) -> {
-            paramSb.append(String.format("%s => %s, ", s, String.join(", ", strings)));
+        params.forEach((name, values) -> {
+            String value = SENSITIVE_PARAMS.contains(name.toLowerCase())
+                    ? "***"
+                    : String.join(", ", values);
+
+            paramSb.append(String.format("%s => %s, ", name, value));
         });
 
         return paramSb.toString();
