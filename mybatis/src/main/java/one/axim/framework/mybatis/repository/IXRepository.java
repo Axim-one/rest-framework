@@ -61,10 +61,13 @@ public interface IXRepository<K, T> {
     /**
      * Batch insert using INSERT IGNORE. Duplicate-key rows are silently skipped.
      *
+     * <p>배치 삽입에서는 중복 키 행이 건너뛰어지므로 "마지막 삽입 PK"는 의미가 모호하다.
+     * 따라서 실제로 삽입된 행 수를 반환한다.</p>
+     *
      * @param entities the list of entities to insert
-     * @return the primary key of the last inserted entity
+     * @return the number of rows actually inserted
      */
-    K saveAll(List<T> entities);
+    int saveAll(List<T> entities);
 
     /**
      * Plain INSERT. The auto-generated ID (if any) is set on the entity after insertion.
