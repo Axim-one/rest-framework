@@ -33,8 +33,12 @@ public class XSessionConfigurationValidator implements ApplicationListener<Conte
             return;
         }
 
+        // ⚠️ getIfAvailable() 은 후보가 2개 이상이면 null 이 아니라 NoUniqueBeanDefinitionException 을 던진다.
+        //   Actuator 가 있으면 controllerEndpointHandlerMapping 이 함께 잡혀 후보가 2개가 되고,
+        //   컨트롤러가 없는 배치 서비스(핸들러 빈 미등록 → 위 early-return 미적용)가 기동 실패한다.
+        //   검증을 못 하는 상황은 통과시키는 게 맞으므로 getIfUnique() 로 바꾼다. (v1.4.2)
         RequestMappingHandlerMapping mapping =
-                context.getBeanProvider(RequestMappingHandlerMapping.class).getIfAvailable();
+                context.getBeanProvider(RequestMappingHandlerMapping.class).getIfUnique();
 
         if (mapping == null) {
             return;
