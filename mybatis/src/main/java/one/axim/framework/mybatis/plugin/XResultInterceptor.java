@@ -139,8 +139,17 @@ public class XResultInterceptor implements Interceptor {
             int total = getCount(query, connection, mappedStatement, paramForBoundSql, boundSql);
 
             if (total > 0) {
-                StringBuilder queryBuilder = new StringBuilder(query);
-                queryBuilder.append(XPaginationSql.orderBy(pagination));
+                // 호출자 SQL 에 이미 최상위 ORDER BY 가 있는데 명시 정렬까지 덧붙이면
+                //   "... ORDER BY a DESC ORDER BY b DESC LIMIT 20" 이 되어 SQL 문법 오류가 난다.
+                //   명시 정렬이 있으면 호출자 ORDER BY 를 제거하고 대체한다(사용자 정렬 우선).
+                //   명시 정렬이 없으면 호출자 ORDER BY 를 그대로 존중한다. (v1.4.1)
+                String orderClause = XPaginationSql.orderBy(pagination);
+                String baseQuery = orderClause.isEmpty()
+                        ? query
+                        : XPaginationSql.stripTrailingOrderBy(query);
+
+                StringBuilder queryBuilder = new StringBuilder(baseQuery);
+                queryBuilder.append(orderClause);
                 queryBuilder.append(XPaginationSql.limit(pagination));
 
                 queryArgs[ROWBOUNDS_INDEX] = new RowBounds(RowBounds.NO_ROW_OFFSET, RowBounds.NO_ROW_LIMIT);
