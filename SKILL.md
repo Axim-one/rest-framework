@@ -7,7 +7,7 @@ description: This skill should be used when the user asks to "create an entity",
 
 Spring Boot + MyBatis lightweight REST framework. Annotation-based entity mapping and repository proxy pattern that minimizes boilerplate while keeping MyBatis SQL control.
 
-**Version:** 1.3.1 | **Java 17+** | **Spring Boot 3.3+** | **MySQL 5.7+/8.0+** | **MyBatis 3.0+**
+**Version:** 1.5.0 | **Java 17+** | **Spring Boot 3.3+** | **MySQL 5.7+/8.0+ or PostgreSQL 9.5+** | **MyBatis 3.0+**
 
 ## Critical Rules
 
@@ -21,6 +21,7 @@ Spring Boot + MyBatis lightweight REST framework. Annotation-based entity mappin
 - `@XPaginationDefault` defaults: `page=1`, `size=10`, `direction=DESC`. Sort without direction defaults to ASC.
 - MANDATORY: Every member variable (Entity, DTO, Request, Response, VO) and every enum item MUST have a detailed Javadoc comment.
 - Always use `XPagination` and `XPage` for pagination. NEVER create custom pagination classes.
+- PostgreSQL: set `axim.mybatis.dialect=postgresql` (or rely on DataSource auto-detection). Repository/CRUD code is identical; custom `@Mapper` SQL must be written in PostgreSQL syntax. One DB type per application.
 
 ## Installation
 
@@ -31,9 +32,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.3.1'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.3.1'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.3.1'
+    implementation 'com.github.Axim-one.rest-framework:core:1.5.0'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.5.0'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.5.0'
 }
 ```
 
@@ -232,6 +233,38 @@ client.spec()
 ```
 
 For full annotation reference, parameter details, pitfalls, and patterns, see `references/rest-client-and-auth.md`.
+
+## PostgreSQL (v1.5.0)
+
+Default dialect is MySQL; SQL sent to MySQL is byte-identical to 1.4.x. For PostgreSQL:
+
+```yaml
+axim:
+  mybatis:
+    dialect: postgresql   # mysql | postgresql — omitted → auto-detect from DataSource metadata, fallback mysql
+```
+
+- Add the `org.postgresql:postgresql` driver in the app. `XResultInterceptor` in `mybatis-config.xml` stays mandatory (it handles generated keys on PostgreSQL).
+- Mixing MySQL and PostgreSQL in one application is NOT supported (the dialect is JVM-global).
+
+| | MySQL | PostgreSQL |
+|---|---|---|
+| Table identifier | `` `schema`.`table` `` | `"schema"."table"` |
+| Pagination | `LIMIT offset, size` | `LIMIT size OFFSET offset` |
+| `save()` with all PKs set | `ON DUPLICATE KEY UPDATE` | `ON CONFLICT (<pk columns>) DO UPDATE SET` |
+| `saveAll()` | `INSERT IGNORE` | `ON CONFLICT DO NOTHING` |
+| `insert()` generated id | `SELECT LAST_INSERT_ID()` | JDBC `getGeneratedKeys()` (`RETURNING <pk>`) |
+
+Differences to keep in mind:
+- `CommonMapper.upsert()` returns 1=insert/2=update on MySQL but always 1 on PostgreSQL (`save()` ignores it).
+- `saveAll()` on PostgreSQL ignores only unique/PK conflicts; other errors (e.g. truncation) still throw. MySQL `INSERT IGNORE` swallows more. Intended.
+- `save()` conflict target is the entity PK. A conflict on another unique key throws on PostgreSQL.
+- Table names are quoted, so case is preserved — match `@XEntity` exactly (use lowercase tables). Columns are unquoted snake_case.
+- Do not create NEW rows on a serial/identity PK by setting the id and calling `save()` — the sequence does not advance and later `insert()` collides.
+- Custom `@Mapper` SQL runs as written: replace backticks, `LIMIT a, b`, `IFNULL`, `DATE_FORMAT`, `ON DUPLICATE KEY`, `@SelectKey("SELECT LAST_INSERT_ID()")`. Use `@Options(useGeneratedKeys = true, keyProperty = "id", keyColumn = "id")` for generated keys. `CONCAT` works on both.
+- JSON column mapped to a `String` field: PostgreSQL `jsonb` rejects `setString` → add `stringtype=unspecified` to the JDBC URL or use a jsonb TypeHandler.
+- `timestamptz` → `OffsetDateTime`/`Instant`; `LocalDateTime` is for `timestamp`.
+- Enums: use `varchar` + `CHECK` instead of native PostgreSQL enums (the default `EnumTypeHandler` binds strings).
 
 ## Architecture
 

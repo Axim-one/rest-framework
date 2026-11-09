@@ -34,6 +34,12 @@ spring.datasource.password=
 spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 mybatis.config-location=classpath:mybatis-config.xml
 
+# -- Framework: MyBatis dialect (v1.5.0) --
+# axim.mybatis.dialect=postgresql                 # mysql | postgresql (default: auto-detect from DataSource, fallback mysql)
+# PostgreSQL example:
+# spring.datasource.url=jdbc:postgresql://localhost:5432/mydb
+# spring.datasource.driver-class-name=org.postgresql.Driver
+
 # -- Framework: HTTP Client --
 axim.rest.client.pool-size=200                    # Max connection pool (default: 200)
 axim.rest.client.connection-request-timeout=30    # seconds (default: 30)

@@ -8,7 +8,8 @@ Spring Boot + MyBatis 기반의 경량 REST 프레임워크. 어노테이션 기
 - **Query Derivation** - `findByEmailAndStatus()`처럼 메서드명에서 SQL 자동 파싱
 - **Annotation-based Mapping** - `@XEntity`, `@XColumn`, `@XDefaultValue`로 테이블/컬럼 매핑
 - **Composite Primary Key** - 복합키 엔티티 지원 (키 클래스 기반 CRUD)
-- **Atomic Upsert** - `save()` 호출 시 `INSERT ... ON DUPLICATE KEY UPDATE`로 원자적 처리
+- **Atomic Upsert** - `save()` 호출 시 `INSERT ... ON DUPLICATE KEY UPDATE`(PostgreSQL 은 `ON CONFLICT`)로 원자적 처리
+- **MySQL / PostgreSQL** - `axim.mybatis.dialect` 또는 DataSource 자동 감지 (v1.5.0)
 - **Selective Update** - `modify()`로 null이 아닌 필드만 UPDATE
 - **Pagination** - `XPagination` + `XPage<T>`로 페이지네이션, COUNT, 정렬 자동 처리
 - **REST Client Proxy** - `@XRestService` 선언형 HTTP 클라이언트 (OpenFeign 유사)
@@ -29,7 +30,7 @@ rest-framework/
 
 - Java 17+
 - Spring Boot 3.3+
-- MySQL 5.7+ / 8.0+
+- MySQL 5.7+ / 8.0+ 또는 PostgreSQL 9.5+ (통합 테스트: MySQL 8.0, PostgreSQL 16)
 - MyBatis 3.0+
 
 ## Installation
@@ -45,9 +46,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Axim-one.rest-framework:core:1.3.1'
-    implementation 'com.github.Axim-one.rest-framework:rest-api:1.3.1'
-    implementation 'com.github.Axim-one.rest-framework:mybatis:1.3.1'
+    implementation 'com.github.Axim-one.rest-framework:core:1.5.0'
+    implementation 'com.github.Axim-one.rest-framework:rest-api:1.5.0'
+    implementation 'com.github.Axim-one.rest-framework:mybatis:1.5.0'
 }
 ```
 
@@ -65,17 +66,17 @@ dependencies {
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>core</artifactId>
-        <version>1.3.1</version>
+        <version>1.5.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>rest-api</artifactId>
-        <version>1.3.1</version>
+        <version>1.5.0</version>
     </dependency>
     <dependency>
         <groupId>com.github.Axim-one.rest-framework</groupId>
         <artifactId>mybatis</artifactId>
-        <version>1.3.1</version>
+        <version>1.5.0</version>
     </dependency>
 </dependencies>
 ```
@@ -253,7 +254,49 @@ axim.rest.client.response-timeout=30
 # Session (rest-api module, optional)
 axim.rest.session.secret-key=your-hmac-secret
 axim.rest.session.expire-days=7
+
+# MyBatis dialect (optional) — mysql | postgresql, 미지정 시 DataSource 자동 감지
+axim.mybatis.dialect=postgresql
 ```
+
+## PostgreSQL (v1.5.0)
+
+기본 방언은 MySQL 이며, MySQL 이 받는 SQL 은 1.4.x 와 **문자열 단위로 같습니다**(스냅샷 테스트로 고정). PostgreSQL 에서는 같은 API 그대로 쓰고 방언만 지정합니다.
+
+```yaml
+axim:
+  mybatis:
+    dialect: postgresql   # mysql | postgresql
+```
+
+- 설정하지 않으면 DataSource 의 `DatabaseMetaData.getDatabaseProductName()` 으로 **자동 감지**합니다. 기동 시 DB 에 붙지 못하면 첫 쿼리에서 다시 감지하고, 그래도 모르면 mysql 로 둡니다.
+- 잘못된 값(`postgre` 등)은 기동 시 예외로 막습니다.
+- PostgreSQL JDBC 드라이버(`org.postgresql:postgresql`)는 앱에서 추가하세요. 프레임워크는 `mysql-connector-j` 만 `runtimeOnly` 로 가져옵니다.
+- `mybatis-config.xml` 의 `XResultInterceptor` 플러그인 등록은 PostgreSQL 에서도 필수입니다(생성 키 회수를 여기서 처리).
+
+| 항목 | MySQL | PostgreSQL |
+|---|---|---|
+| 테이블 식별자 | `` `schema`.`table` `` | `"schema"."table"` |
+| 페이지네이션 | `LIMIT offset, size` | `LIMIT size OFFSET offset` |
+| `save()` (PK 가 다 채워짐) | `INSERT ... ON DUPLICATE KEY UPDATE` | `INSERT ... ON CONFLICT (<PK 컬럼>) DO UPDATE SET ...` |
+| `saveAll()` | `INSERT IGNORE` | `INSERT ... ON CONFLICT DO NOTHING` |
+| `insert()` 자동 ID 회수 | `SELECT LAST_INSERT_ID()` | JDBC `getGeneratedKeys()` (`RETURNING <pk>`) |
+
+**동작 차이 / 제약**
+
+- **한 앱 안에서 MySQL·PostgreSQL 혼용은 지원하지 않습니다.** 방언은 JVM 전역 하나입니다.
+- **upsert 반환값**: MySQL 은 insert=1 / update=2, PostgreSQL 은 항상 1. `save()` 는 이 값을 쓰지 않으므로 영향이 없지만, `CommonMapper.upsert()` 를 직접 호출해 값으로 분기하는 코드는 PostgreSQL 에서 달라집니다.
+- **`saveAll()` 중복 무시 범위**: MySQL `INSERT IGNORE` 는 충돌 외 오류(값 잘림 등)도 경고로 삼키지만, PostgreSQL `ON CONFLICT DO NOTHING` 은 unique/PK 충돌만 무시하고 나머지는 예외를 던집니다. 의도된 차이입니다.
+- **`save()` 의 충돌 대상은 엔티티 PK** 입니다. PK 외 unique 키 충돌은 갱신이 아니라 예외가 됩니다(MySQL `ON DUPLICATE KEY` 는 아무 unique 키에나 걸림).
+- **테이블명은 따옴표로 감싸므로 대소문자가 그대로** 나갑니다. `@XEntity` 값과 실제 테이블명을 정확히(보통 소문자로) 맞추세요. 컬럼명은 따옴표 없는 snake_case 라 그대로 맞습니다.
+- 자동증가(`serial`/`identity`) PK 에 `save()` 로 id 를 직접 넣어 **새 행**을 만들면 시퀀스가 움직이지 않아 이후 `insert()` 가 PK 충돌을 냅니다. 신규 행은 id 를 비우고 `insert()`/`save()` 하세요.
+- 커스텀 `@Mapper` SQL 은 그대로 실행됩니다. 백틱, `LIMIT a, b`, `IFNULL`, `DATE_FORMAT`, `ON DUPLICATE KEY`, `@SelectKey("SELECT LAST_INSERT_ID()")` 같은 MySQL 전용 문법은 직접 바꾸세요(`CONCAT` 은 공통). 커스텀 매퍼의 생성 키는 `@Options(useGeneratedKeys = true, keyProperty = "id", keyColumn = "id")`.
+
+**소비자 쪽 주의 (프레임워크 변경 아님)**
+
+- JSON 컬럼을 `String` 필드로 매핑하면 PostgreSQL `jsonb` 가 `setString` 을 거부합니다 → JDBC URL 에 `stringtype=unspecified` 를 붙이거나 jsonb `TypeHandler` 를 쓰세요.
+- `timestamptz` 는 `OffsetDateTime`/`Instant` 로, `LocalDateTime` 은 `timestamp` 용입니다.
+- enum 은 PostgreSQL 네이티브 enum 대신 `varchar` + `CHECK` 로 두세요(기본 `EnumTypeHandler` 가 문자열로 넣습니다).
 
 ## Build
 
