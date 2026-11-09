@@ -27,4 +27,12 @@ dependencies {
 
     annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+}
+test {
+    // 스냅샷 재생성(의도된 변경일 때만): ./gradlew :mybatis:test -Psnapshot.write=<절대경로>
+    if (project.hasProperty('snapshot.write')) {
+        systemProperty 'snapshot.write', project.property('snapshot.write')
+    }
 }
