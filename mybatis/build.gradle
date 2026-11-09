@@ -12,6 +12,16 @@ jar {
     }
 }
 
+// Docker Engine 29+ 는 API 1.44 미만 클라이언트를 거부한다 — Boot 3.3.1 관리 버전(1.19.8)은 연결 실패.
+// 테스트 클래스패스에만 적용한다(전역 ext 로 바꾸면 배포 POM 의 dependencyManagement 로 새어 나간다).
+dependencyManagement {
+    configurations(project.configurations.testCompileClasspath, project.configurations.testRuntimeClasspath) {
+        imports {
+            mavenBom 'org.testcontainers:testcontainers-bom:1.21.4'
+        }
+    }
+}
+
 dependencies {
     implementation project(':core')
 
@@ -27,11 +37,15 @@ dependencies {
 
     annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.postgresql:postgresql'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mysql'
+    testImplementation 'org.testcontainers:postgresql'
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
 }
 test {
-    // 스냅샷 재생성(의도된 변경일 때만): ./gradlew :mybatis:test -Psnapshot.write=<절대경로>
+    // 스냅샷 재생성(의도된 변경일 때만): ./gradlew :mybatis:test -Psnapshot.write=<디렉터리 절대경로>
     if (project.hasProperty('snapshot.write')) {
         systemProperty 'snapshot.write', project.property('snapshot.write')
     }

@@ -2,6 +2,11 @@ package one.axim.framework.mybatis.plugin;
 
 import one.axim.framework.core.data.XPage;
 import one.axim.framework.core.data.XPagination;
+import one.axim.framework.mybatis.dialect.XDialect;
+import one.axim.framework.mybatis.dialect.XDialectHolder;
+import one.axim.framework.mybatis.mapper.CommonMapper;
+import one.axim.framework.mybatis.meta.ColumnMetadata;
+import one.axim.framework.mybatis.meta.EntityMetadataFactory;
 import one.axim.framework.mybatis.model.XMapperParameter;
 import one.axim.framework.mybatis.repository.XRepositoryConfig;
 import one.axim.framework.mybatis.utils.ColumnSpec;
@@ -12,6 +17,10 @@ import org.apache.ibatis.plugin.Intercepts;
 import org.apache.ibatis.plugin.Invocation;
 import org.apache.ibatis.plugin.Signature;
 import org.apache.ibatis.executor.Executor;
+import org.apache.ibatis.executor.keygen.Jdbc3KeyGenerator;
+import org.apache.ibatis.executor.keygen.KeyGenerator;
+import org.apache.ibatis.executor.keygen.NoKeyGenerator;
+import org.apache.ibatis.executor.keygen.SelectKeyGenerator;
 import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.mapping.ParameterMapping;
@@ -65,6 +74,16 @@ public class XResultInterceptor implements Interceptor {
             java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Map<String, Class<?>> RETURN_TYPE_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, Boolean> GENERIC_RETURN_CACHE = new ConcurrentHashMap<>();
+    /**
+     * PostgreSQL 용으로 키 생성기를 바꾼 MappedStatement 캐시 (v1.5.0).
+     * 원본 MappedStatement 를 identity 로 키에 넣는다 — Configuration(SqlSessionFactory)이 여럿이어도 섞이지 않는다.
+     */
+    private static final Map<PgKeyCacheKey, MappedStatement> PG_KEY_STATEMENT_CACHE = new ConcurrentHashMap<>();
+
+    private record PgKeyCacheKey(MappedStatement original, String keyColumn) {}
+    private static final String COMMON_MAPPER_PREFIX = CommonMapper.class.getName() + ".";
+    private static final String INSERT_AND_SELECT_KEY_ID = COMMON_MAPPER_PREFIX + "insertAndSelectKey";
+    private static final EntityMetadataFactory METADATA_FACTORY = new EntityMetadataFactory();
     private final Logger log = LoggerFactory.getLogger(XResultInterceptor.class);
 
     @Override
@@ -78,7 +97,16 @@ public class XResultInterceptor implements Interceptor {
 
         log.debug("XResultInterceptor: Intercepting method: " + mappedStatement.getId());
 
+        resolveDialectIfAbsent(invocation);
+
         if (!mappedStatement.getSqlCommandType().name().equals("SELECT")) {
+            if (XDialectHolder.current().usesJdbcGeneratedKeys()) {
+                MappedStatement adapted = adaptKeyGeneration(mappedStatement, parameter);
+                if (adapted != mappedStatement) {
+                    queryArgs[MAPPED_STATEMENT_INDEX] = adapted;
+                    mappedStatement = adapted;
+                }
+            }
             if (XRepositoryConfig.isDebug()) {
                 String query = getQueryString(mappedStatement, queryArgs[PARAMETER_INDEX]);
                 log.info("XQUERY ==> \n" + query);
@@ -212,6 +240,97 @@ public class XResultInterceptor implements Interceptor {
         }
 
         return invocation.proceed();
+    }
+
+    /**
+     * 기동 시 방언이 정해지지 않았으면(설정 없음 + DataSource 감지 실패) 지금 쓰는 커넥션으로
+     * 감지한다. 그래도 모르면 MySQL 로 고정. (v1.5.0)
+     */
+    private void resolveDialectIfAbsent(Invocation invocation) {
+        if (XDialectHolder.isResolved()) {
+            return;
+        }
+        XDialect dialect = XDialectHolder.resolveIfAbsent(() -> {
+            try {
+                Executor executor = (Executor) invocation.getTarget();
+                return XDialect.detect(executor.getTransaction().getConnection());
+            } catch (SQLException | RuntimeException e) {
+                log.warn("Axim mybatis dialect detection failed; falling back to mysql", e);
+                return null;
+            }
+        });
+        log.info("Axim mybatis dialect: {} (detected on first query)", dialect);
+    }
+
+    /**
+     * PostgreSQL 에서 CommonMapper insert 계열의 키 생성을 바꾼다. (v1.5.0)
+     *
+     * <ul>
+     *   <li>{@code insertAndSelectKey}: {@code @SelectKey("SELECT LAST_INSERT_ID()")} 는 PG 에 없다 →
+     *       {@link Jdbc3KeyGenerator} + keyColumn = 자동증가 PK 컬럼. PG 드라이버가 {@code RETURNING <pk>} 를
+     *       붙이고 값은 기존과 같이 {@code XMapperParameter.lastInsertedId} 로 들어간다.
+     *       자동증가 PK 가 없으면 키 회수 없음.</li>
+     *   <li>그 밖의 CommonMapper insert({@code insert}/{@code upsert}/{@code insertAll}): 전역
+     *       {@code useGeneratedKeys=true} 때문에 keyProperty 없는 Jdbc3KeyGenerator 가 붙어 있으면
+     *       PG 드라이버가 {@code RETURNING *} 를 붙이므로 키 회수를 끈다(쓰지 않는 값이다).</li>
+     * </ul>
+     * MySQL 경로는 이 메서드를 타지 않는다.
+     */
+    private MappedStatement adaptKeyGeneration(MappedStatement ms, Object parameter) {
+        String id = ms.getId();
+        if (!id.startsWith(COMMON_MAPPER_PREFIX)) {
+            return ms;
+        }
+        KeyGenerator keyGenerator = ms.getKeyGenerator();
+
+        if (INSERT_AND_SELECT_KEY_ID.equals(id) && keyGenerator instanceof SelectKeyGenerator) {
+            if (!(parameter instanceof XMapperParameter xmp) || xmp.getResultClass() == null) {
+                return ms;
+            }
+            String keyColumn = autoIncrementColumn(xmp.getResultClass());
+            return PG_KEY_STATEMENT_CACHE.computeIfAbsent(new PgKeyCacheKey(ms, keyColumn), k -> keyColumn == null
+                    ? copyWithKeyGenerator(ms, NoKeyGenerator.INSTANCE, null, null)
+                    : copyWithKeyGenerator(ms, Jdbc3KeyGenerator.INSTANCE, "lastInsertedId", keyColumn));
+        }
+
+        if (keyGenerator instanceof Jdbc3KeyGenerator
+                && (ms.getKeyProperties() == null || ms.getKeyProperties().length == 0)) {
+            return PG_KEY_STATEMENT_CACHE.computeIfAbsent(new PgKeyCacheKey(ms, null),
+                    k -> copyWithKeyGenerator(ms, NoKeyGenerator.INSTANCE, null, null));
+        }
+        return ms;
+    }
+
+    private String autoIncrementColumn(Class<?> entityClass) {
+        for (ColumnMetadata column : METADATA_FACTORY.getMetadata(entityClass, null).getPrimaryKeyColumns()) {
+            if (column.isAutoIncrement()) {
+                return column.getColumnName();
+            }
+        }
+        return null;
+    }
+
+    private MappedStatement copyWithKeyGenerator(MappedStatement ms, KeyGenerator keyGenerator,
+                                                 String keyProperty, String keyColumn) {
+        MappedStatement.Builder builder =
+                new MappedStatement.Builder(ms.getConfiguration(), ms.getId(), ms.getSqlSource(), ms.getSqlCommandType());
+        builder.resource(ms.getResource());
+        builder.fetchSize(ms.getFetchSize());
+        builder.timeout(ms.getTimeout());
+        builder.statementType(ms.getStatementType());
+        builder.resultSetType(ms.getResultSetType());
+        builder.parameterMap(ms.getParameterMap());
+        builder.resultMaps(ms.getResultMaps());
+        builder.cache(ms.getCache());
+        builder.flushCacheRequired(ms.isFlushCacheRequired());
+        builder.useCache(ms.isUseCache());
+        builder.resultOrdered(ms.isResultOrdered());
+        builder.databaseId(ms.getDatabaseId());
+        builder.lang(ms.getLang());
+        builder.keyGenerator(keyGenerator);
+        builder.keyProperty(keyProperty);
+        builder.keyColumn(keyColumn);
+        return builder.build();
     }
 
     public int getCount(final String sql, final Connection connection,

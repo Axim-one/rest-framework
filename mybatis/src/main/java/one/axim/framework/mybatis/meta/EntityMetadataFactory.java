@@ -36,12 +36,10 @@ public class EntityMetadataFactory {
             throw new XBuilderInvalidModelException("Not found @XEntity Annotation in Model Class: " + modelClass.getName());
         }
 
-        String tableName;
-        if (StringUtils.hasText(entity.schema())) {
-            tableName = "`" + entity.schema() + "`.`" + entity.value() + "`";
-        } else {
-            tableName = "`" + entity.value() + "`";
-        }
+        // 따옴표는 여기서 붙이지 않는다 — SQL 생성 시점의 방언으로 EntityMetadata.getTableName() 이 붙인다.
+        // (리포지토리 프록시가 방언 결정보다 먼저 메타데이터를 파싱할 수 있다) v1.5.0
+        String schema = StringUtils.hasText(entity.schema()) ? entity.schema() : null;
+        String tableName = entity.value();
 
         Map<String, ColumnMetadata> columnMetadataMap = new LinkedHashMap<>();
         for (Field field : getAllFields(modelClass)) {
@@ -106,7 +104,7 @@ public class EntityMetadataFactory {
             throw new XBuilderInvalidModelException("No mappable columns found in model: " + modelClass.getName());
         }
 
-        return new EntityMetadata(modelClass, keyClass, tableName, columnMetadataMap);
+        return new EntityMetadata(modelClass, keyClass, schema, tableName, columnMetadataMap);
     }
 
     /**

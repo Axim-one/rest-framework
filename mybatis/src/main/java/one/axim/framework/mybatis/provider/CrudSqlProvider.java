@@ -1,5 +1,7 @@
 package one.axim.framework.mybatis.provider;
 
+import one.axim.framework.mybatis.dialect.XDialect;
+import one.axim.framework.mybatis.dialect.XDialectHolder;
 import one.axim.framework.mybatis.meta.ColumnMetadata;
 import one.axim.framework.mybatis.meta.EntityMetadata;
 import one.axim.framework.mybatis.meta.EntityMetadataFactory;
@@ -125,11 +127,12 @@ public class CrudSqlProvider {
     }
 
     /**
-     * Builds INSERT IGNORE for batch inserts.
+     * Builds INSERT IGNORE (MySQL) / INSERT ... ON CONFLICT DO NOTHING (PostgreSQL) for batch inserts.
      * Rows with duplicate keys are silently skipped (no error thrown).
      */
     private String buildInsertAll(XMapperParameter parameter) {
         EntityMetadata metadata = getMetadata(parameter);
+        XDialect dialect = XDialectHolder.current();
         String columns = metadata.getInsertableColumns().stream()
                 .filter(c -> !c.isAutoIncrement())
                 .filter(c -> !(c.isDBDefaultUsed() && c.resolveInsertValue() == null))
@@ -146,11 +149,12 @@ public class CrudSqlProvider {
                 .collect(Collectors.joining(", "));
 
         return "<script>"
-                + "INSERT IGNORE INTO " + metadata.getTableName() + " (" + columns + ") "
+                + dialect.insertIgnoreInto() + metadata.getTableName() + " (" + columns + ") "
                 + "VALUES "
                 + "<foreach collection='model' item='item' separator=','>"
                 + "(" + values + ")"
                 + "</foreach>"
+                + dialect.insertIgnoreSuffix()
                 + "</script>";
     }
 
@@ -360,14 +364,19 @@ public class CrudSqlProvider {
     }
 
     /**
-     * INSERT ... ON DUPLICATE KEY UPDATE
+     * MySQL: INSERT ... ON DUPLICATE KEY UPDATE
+     * PostgreSQL: INSERT ... ON CONFLICT (&lt;PK 컬럼&gt;) DO UPDATE SET ... (v1.5.0)
      * PK 충돌 시 UPDATE로 전환되므로 별도 exists 체크 없이 원자적으로 동작.
+     *
+     * <p>반환값 차이: MySQL 은 insert=1 / update=2, PostgreSQL 은 항상 1.
+     * 프레임워크({@code save()})는 이 값을 쓰지 않는다.
      */
     private String buildUpsert(XMapperParameter parameter) {
         EntityMetadata metadata = getMetadata(parameter);
+        XDialect dialect = XDialectHolder.current();
 
         List<ColumnMetadata> insertColumns = metadata.getInsertableColumns().stream()
-                .filter(c -> !c.isAutoIncrement())
+                .filter(c -> !c.isAutoIncrement() || (dialect.upsertInsertsAutoIncrementKey() && c.isPrimaryKey()))
                 .filter(c -> !(c.isDBDefaultUsed() && c.resolveInsertValue() == null))
                 .toList();
 
@@ -408,8 +417,11 @@ public class CrudSqlProvider {
         }
         sb.append("</trim>\n");
 
-        // ON DUPLICATE KEY UPDATE — 전체 컬럼 업데이트 (기존 동작 유지)
-        sb.append(" ON DUPLICATE KEY UPDATE ").append(updateSet);
+        // 충돌 시 전체 컬럼 업데이트 (기존 동작 유지). 충돌 대상 = 엔티티 PK.
+        List<String> pkColumns = metadata.getPrimaryKeyColumns().stream()
+                .map(ColumnMetadata::getColumnName)
+                .toList();
+        sb.append(dialect.upsertClause(pkColumns, updateSet));
         sb.append("\n</script>");
 
         return sb.toString();
@@ -420,7 +432,7 @@ public class CrudSqlProvider {
     // ──────────────────────────────────────────
 
     /**
-     * Cache key format: "ClassName:operation[:whereField1,whereField2,...]"
+     * Cache key format: "DIALECT:ClassName:operation[:whereField1,whereField2,...]"
      *
      * The where field names determine the SQL template structure.
      * Actual values don't affect the template (MyBatis uses #{} placeholders),
@@ -429,7 +441,9 @@ public class CrudSqlProvider {
      * ORDER BY is excluded from the cache key since it's appended dynamically.
      */
     private String cacheKey(XMapperParameter parameter, String operation) {
-        StringBuilder key = new StringBuilder(parameter.getResultClass().getName())
+        // 방언이 템플릿을 바꾸므로 키에 포함한다 (MySQL 출력 자체는 1.4.2 와 같다).
+        StringBuilder key = new StringBuilder(XDialectHolder.current().name())
+                .append(':').append(parameter.getResultClass().getName())
                 .append(':').append(operation);
 
         if (parameter.getWhere() instanceof Map) {

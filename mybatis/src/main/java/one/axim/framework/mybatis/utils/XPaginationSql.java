@@ -2,6 +2,8 @@ package one.axim.framework.mybatis.utils;
 
 import one.axim.framework.core.data.XPagination;
 import one.axim.framework.core.utils.NamingConvert;
+import one.axim.framework.mybatis.dialect.XDialect;
+import one.axim.framework.mybatis.dialect.XDialectHolder;
 
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -36,16 +38,22 @@ public final class XPaginationSql {
                 .collect(Collectors.joining(", "));
     }
 
+    /** 현재 방언({@link XDialectHolder#current()})의 LIMIT 절. */
     public static String limit(XPagination pagination) {
+        return limit(pagination, XDialectHolder.current());
+    }
+
+    /**
+     * MySQL {@code LIMIT offset, size} / PostgreSQL {@code LIMIT size OFFSET offset}.
+     * offset 0 이면 둘 다 {@code LIMIT size}. (v1.5.0)
+     */
+    public static String limit(XPagination pagination, XDialect dialect) {
         if (pagination == null || !pagination.hasLimit()) {
             return "";
         }
         int size = Math.max(1, Math.min(pagination.getSize(), 10000));
         int offset = Math.max(0, pagination.getOffset());
-        if (offset == 0) {
-            return " LIMIT " + size;
-        }
-        return " LIMIT " + offset + ", " + size;
+        return dialect.limit(size, offset);
     }
 
     /**

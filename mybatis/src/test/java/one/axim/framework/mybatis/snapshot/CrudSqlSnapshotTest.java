@@ -11,6 +11,10 @@ import one.axim.framework.mybatis.snapshot.SnapshotEntities.SnapOrderItem;
 import one.axim.framework.mybatis.snapshot.SnapshotEntities.SnapOrderItemKey;
 import one.axim.framework.mybatis.snapshot.SnapshotEntities.SnapUser;
 import one.axim.framework.mybatis.utils.XPaginationSql;
+import one.axim.framework.mybatis.dialect.XDialect;
+import one.axim.framework.mybatis.dialect.XDialectHolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,11 +37,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * <p>{@code snapshot/mysql-1.4.2.txt} 는 1.4.2 코드(main 0127363)로 생성한 뒤 손대지 않는다.
  * 이 테스트가 깨지면 MySQL 소비자(cryptoments, TORQ)가 받는 SQL 이 바뀐 것이다.
  *
- * <p>스냅샷 재생성(의도된 변경일 때만): {@code -Dsnapshot.write=<경로>}.
+ * <p>스냅샷 재생성(의도된 변경일 때만): {@code ./gradlew :mybatis:test -Psnapshot.write=<디렉터리>}.
+ * {@code mysql-1.4.2.txt} 는 재생성하지 않는다 — 바뀌었다면 MySQL 회귀다.
  */
 class CrudSqlSnapshotTest {
 
     static final String SNAPSHOT = "/snapshot/mysql-1.4.2.txt";
+    static final String PG_SNAPSHOT = "/snapshot/postgresql-1.5.0.txt";
 
     /** 방언 미지정 상태의 전체 출력. */
     static String render() {
@@ -104,18 +110,42 @@ class CrudSqlSnapshotTest {
         return out.toString();
     }
 
+    @BeforeEach
+    @AfterEach
+    void unresolvedDialect() {
+        // 통합 테스트가 같은 JVM 에서 먼저 돌며 전역 방언을 정해 둘 수 있다
+        XDialectHolder.reset();
+    }
+
     @Test
     @DisplayName("방언 미지정: CrudSqlProvider 전 메서드 · limit() 출력이 1.4.2 와 문자열 동일")
     void mysqlOutputIsByteIdenticalTo142() throws IOException {
-        String actual = render();
+        assertSnapshot(SNAPSHOT, render());
+    }
 
-        String writeTo = System.getProperty("snapshot.write");
-        if (writeTo != null && !writeTo.isBlank()) {
-            Files.writeString(Path.of(writeTo), actual, StandardCharsets.UTF_8);
+    @Test
+    @DisplayName("mysql 명시: 미지정과 같은 출력 (1.4.2)")
+    void explicitMysqlIsByteIdenticalTo142() throws IOException {
+        XDialectHolder.set(XDialect.MYSQL);
+        assertSnapshot(SNAPSHOT, render());
+    }
+
+    @Test
+    @DisplayName("postgresql: 출력 고정 (리뷰용 스냅샷)")
+    void postgresqlOutput() throws IOException {
+        XDialectHolder.set(XDialect.POSTGRESQL);
+        assertSnapshot(PG_SNAPSHOT, render());
+    }
+
+    private static void assertSnapshot(String resource, String actual) throws IOException {
+        String writeDir = System.getProperty("snapshot.write");
+        if (writeDir != null && !writeDir.isBlank()) {
+            Files.writeString(Path.of(writeDir, resource.substring(resource.lastIndexOf('/') + 1)),
+                    actual, StandardCharsets.UTF_8);
         }
 
-        try (InputStream in = CrudSqlSnapshotTest.class.getResourceAsStream(SNAPSHOT)) {
-            assertNotNull(in, "snapshot missing: " + SNAPSHOT);
+        try (InputStream in = CrudSqlSnapshotTest.class.getResourceAsStream(resource)) {
+            assertNotNull(in, "snapshot missing: " + resource);
             String expected = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             assertEquals(expected, actual);
         }
