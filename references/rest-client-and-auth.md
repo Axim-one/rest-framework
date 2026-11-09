@@ -216,7 +216,7 @@ public class ExternalApiService {
 }
 ```
 
-> `XWebClientFactory.create()` is **cached** by base URL via `ConcurrentHashMap` — safe to call repeatedly.
+> `XWebClientFactory.create()` returns a **new instance** on every call (v1.5.0), so `create(url).errorHandler(...)` only affects that instance. Keep the client in a field and reuse it; the connection pool lives in the shared `RestClient`. (1.4.x cached one instance per base URL and `errorHandler(...)` mutated it for every caller.)
 
 ### API Reference
 
@@ -393,17 +393,32 @@ User getUser(@PathVariable("userId") Long id);  // "userId" != "id"
 User getUser(@PathVariable("id") Long id);
 ```
 
-### 3. @RequestParam creates query string, NOT form data
+### 3. Where `@RequestParam` goes depends on the HTTP method
+
+| Method | No `@RequestBody` | With `@RequestBody` |
+|---|---|---|
+| GET / DELETE | query string `?status=ACTIVE` | GET: body sent, **`@RequestParam` ignored** |
+| POST / PUT / PATCH | **form body** (`application/x-www-form-urlencoded`) | body sent as JSON, **`@RequestParam` ignored** |
 
 ```java
-// This creates: GET /orders?status=ACTIVE (query string)
+// GET -> /orders?status=ACTIVE
 @XRestAPI(value = "/orders", method = XHttpMethod.GET)
 List<Order> search(@RequestParam("status") String status);
 
-// For form data, use @RequestBody with Map
+// POST form (application/x-www-form-urlencoded): grant_type=...&code=...
 @XRestAPI(value = "/auth/token", method = XHttpMethod.POST)
-TokenResponse getToken(@RequestBody Map<String, String> formData);
+TokenResponse getToken(@RequestParam("grant_type") String grantType, @RequestParam("code") String code);
+
+// POST JSON — a Map body is JSON, NOT form data
+@XRestAPI(value = "/orders", method = XHttpMethod.POST)
+Order create(@RequestBody Map<String, Object> body);
+
+// POST JSON + query string -> put the query in the path; @RequestParam would be dropped
+@XRestAPI(value = "/orders?dryRun={dryRun}", method = XHttpMethod.POST)
+Order create(@PathVariable("dryRun") boolean dryRun, @RequestBody CreateOrderRequest body);
 ```
+
+`@RequestBody MultiValueMap<String, String>` is also sent as a form body.
 
 ### 4. XPagination parameter needs no annotation
 
@@ -529,8 +544,6 @@ axim.rest.session.token-expire-days=90         # Expiration in days (default: 90
 
 ### JSON Date Format
 
-The framework ObjectMapper uses `yyyy-MM-dd HH:mm:ss` (NOT ISO 8601):
-```java
-// O "2024-01-15 14:30:00"
-// X "2024-01-15T14:30:00Z"
-```
+Use `java.time.*` for dates in inter-service DTOs.
+
+Do NOT use `java.util.Date` in `@XRestService` **response** DTOs: Spring Boot servers write it as ISO-8601 (`2024-01-15T14:30:00.000+00:00`), but `XRestClient` parses responses with a fixed `yyyy-MM-dd HH:mm:ss` format and throws `InvalidFormatException`. Request bodies go through RestTemplate's default converter (Date → epoch millis, `LocalDateTime` → array), which servers read fine. `XWebClient` uses RestClient's default converters in both directions and is unaffected. Pinned by `WireContractTest`; background in `docs/adr/0001-http-client-architecture.md`.

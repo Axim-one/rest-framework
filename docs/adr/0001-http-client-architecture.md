@@ -116,6 +116,12 @@ well-known 모듈을 **자동 등록**한다. a32c783이 3곳에 `registerModule
 
 ### 3.3 ★ `java.util.Date` 는 이미 깨져 있다 (양방향)
 
+> **검증 노트 (2026-11-10, v1.5.0 `WireContractTest`):** 실제 `XRestClientProxy` 경로로 확인한 결과 **깨지는 것은 응답 방향뿐이다.**
+> `@XRestService` 요청 바디는 `XRestClient` 의 ObjectMapper 가 아니라 RestTemplate 기본 컨버터로 직렬화된다
+> (`java.util.Date` → epoch millis, `LocalDateTime` → 배열). Boot 서버는 둘 다 읽는다. 아래 PoC 의
+> "Boot 서버가 XRestClient 요청 바디를 읽을 수 있는가 → THROWS" 는 ObjectMapper 단독 PoC 결과이며 실제 요청 경로와 다르다.
+> 응답 방향(`XRestClient` 가 서버의 ISO-8601 `java.util.Date` 를 읽지 못함)은 재현됐다.
+
 ```
 Boot SERVER emits        : {"legacyDate":"2023-11-14T22:13:20.000+00:00", "modernDate":"2023-11-14T22:13:20"}
 XRestClient mapper emits : {"legacyDate":"2023-11-14 22:13:20",           "modernDate":"2023-11-14T22:13:20"}

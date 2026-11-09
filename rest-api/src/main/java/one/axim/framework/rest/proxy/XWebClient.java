@@ -27,24 +27,28 @@ public class XWebClient {
     private static final ObjectMapper OBJECT_MAPPER = createObjectMapper();
 
     private final RestClient restClient;
+    /** 연결 실패 예외에 싣는 대상 정보 (v1.5.0). {@link #XWebClient(RestClient)} 로 만들면 null. */
+    private final String baseUrl;
     private boolean isDebug = false;
     private XErrorResponseHandler errorHandler;
 
     public XWebClient(RestClient restClient) {
         this.restClient = restClient;
+        this.baseUrl = null;
     }
 
     public XWebClient(RestClient restClient, String baseUrl) {
         this.restClient = restClient.mutate()
                 .baseUrl(baseUrl)
                 .build();
+        this.baseUrl = baseUrl;
     }
 
     public static XWebClient create(String baseUrl) {
         RestClient restClient = RestClient.builder()
                 .baseUrl(baseUrl)
                 .build();
-        return new XWebClient(restClient);
+        return new XWebClient(restClient, baseUrl);
     }
 
     // ──────────────────────────────────────────
@@ -141,7 +145,7 @@ public class XWebClient {
         } catch (XRestException e) {
             throw e;
         } catch (ResourceAccessException e) {
-            throw new UnavailableServerException(UnavailableServerException.UNAVAILABLE_SERVICE);
+            throw unavailable();
         }
     }
 
@@ -183,13 +187,20 @@ public class XWebClient {
         } catch (XRestException e) {
             throw e;
         } catch (ResourceAccessException e) {
-            throw new UnavailableServerException(UnavailableServerException.UNAVAILABLE_SERVICE);
+            throw unavailable();
         }
     }
 
     // ──────────────────────────────────────────
     // Error handling
     // ──────────────────────────────────────────
+
+    /** XRestClient 와 같이 대상 정보를 description 에 싣는다 (v1.5.0). */
+    private UnavailableServerException unavailable() {
+        return baseUrl != null
+                ? new UnavailableServerException(UnavailableServerException.UNAVAILABLE_SERVICE, baseUrl)
+                : new UnavailableServerException(UnavailableServerException.UNAVAILABLE_SERVICE);
+    }
 
     private void handleErrorResponse(org.springframework.http.HttpStatusCode statusCode, InputStream body) throws IOException {
         HttpStatus status = HttpStatus.valueOf(statusCode.value());

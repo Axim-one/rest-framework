@@ -39,7 +39,7 @@ public class XRestClientProxy implements InvocationHandler {
     @Autowired
     private XRestEnvironment xRestEnvironment;
 
-    @Value("${axim.rest.gateway.host:@null}")
+    @Value("${axim.rest.gateway.host:}")
     private String gatewayHost;
 
     @Value("${axim.rest.debug:false}")
@@ -189,6 +189,12 @@ public class XRestClientProxy implements InvocationHandler {
 
             if (!StringUtils.hasText(host)) {
                 // Gateway mode — service name/version become URL path segments for routing
+                if (!StringUtils.hasText(gatewayHost)) {
+                    // 1.4.x 는 기본값이 리터럴 "@null" 이라 https://@null/... 로 요청이 나가 원인을 알기 어려웠다 (v1.5.0)
+                    throw new IllegalStateException("@XRestService(\"" + service.value()
+                            + "\") has no host and 'axim.rest.gateway.host' is not set. "
+                            + "Set @XRestService(host = ...) for direct mode or configure axim.rest.gateway.host for gateway mode.");
+                }
                 client = new XRestClient(gatewayHost, service.value(), service.version(), restTemplate);
             } else {
                 if (host.contains("${")) {

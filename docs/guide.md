@@ -13,7 +13,7 @@ These rules MUST be followed when using this framework:
 - `@XRestServiceScan` is required on the application class when using `@XRestService` declarative REST clients.
 - `XWebClient` beans can be registered via `axim.web-client.services.{name}={url}` in properties, then injected with `@Qualifier`.
 - Session token format is NOT JWT — it uses custom `Base64(payload).HmacSHA256(signature)`. Do not use JWT libraries.
-- JSON date format is `yyyy-MM-dd HH:mm:ss`, not ISO 8601.
+- Dates in inter-service DTOs: use `java.time.*` (`LocalDateTime`, `OffsetDateTime`, `Instant`). Do NOT put `java.util.Date` in `@XRestService` response DTOs: Spring Boot servers write it as ISO-8601 but `XRestClient` reads it with `yyyy-MM-dd HH:mm:ss` and fails (`InvalidFormatException`). Request bodies and `XWebClient` are unaffected. Pinned by `WireContractTest`; background in `docs/adr/0001-http-client-architecture.md`.
 - `XSessionResolver` auto-detects `SessionData` subclass parameters — no annotation required on the controller parameter.
 - `XPagination` defaults: `page=1` (1-indexed), `size=20`. `@XPaginationDefault` 없이도 기본값 적용됨. Sort without direction defaults to ASC.
 - MANDATORY: Every member variable (Entity, DTO, Request, Response, VO) and every enum item MUST have a detailed Javadoc comment including purpose, example values, format rules, constraints, and allowed values.
@@ -980,15 +980,17 @@ try {
 
 ### REST Client JSON Serialization
 
-The framework's ObjectMapper is configured with:
-- **Date format:** `yyyy-MM-dd HH:mm:ss` (NOT ISO 8601)
-- **Unknown properties:** Ignored (`FAIL_ON_UNKNOWN_PROPERTIES = false`)
+`rest-api` 의 `WireContractTest` 로 고정된 실제 동작이다.
 
-```java
-// Dates are serialized/deserialized as "yyyy-MM-dd HH:mm:ss"
-// ✓ "2024-01-15 14:30:00"
-// ✗ "2024-01-15T14:30:00Z" (ISO 8601 — not used)
-```
+| 경로 | `java.time.*` (`LocalDateTime` 등) | `java.util.Date` |
+|---|---|---|
+| `@XRestService` 요청 바디 (RestTemplate 기본 컨버터) | 배열 `[2024,1,15,14,30]` — 서버가 읽음 | epoch millis — 서버가 읽음 |
+| `@XRestService` 응답 읽기 (프레임워크 ObjectMapper) | 서버의 ISO-8601 을 읽음 | **실패** — `yyyy-MM-dd HH:mm:ss` 만 읽음, 서버는 ISO-8601 |
+| `XWebClient` 요청 바디 / 응답 읽기 (RestClient 기본 컨버터) | 배열 / ISO-8601 읽음 | epoch millis / ISO-8601 읽음 |
+
+- 서비스 간 DTO 의 날짜는 **`java.time.*`** 로 둔다. `@XRestService` 응답 DTO 의 `java.util.Date` 는 파싱 실패한다.
+- Unknown properties 는 무시한다 (`FAIL_ON_UNKNOWN_PROPERTIES = false`).
+- 배경과 정리 계획: `docs/adr/0001-http-client-architecture.md`.
 
 ## XWebClient (RestClient-based Alternative)
 
@@ -1030,7 +1032,7 @@ public class ExternalApiService {
 
 ### Option 2: Programmatic via XWebClientFactory
 
-Use `XWebClientFactory` to create clients dynamically (clients are cached per baseUrl):
+Use `XWebClientFactory` to create clients dynamically. Each `create()` returns a **new instance** (v1.5.0) — keep it in a field and reuse it; the connection pool lives in the shared `RestClient`:
 
 ```java
 @Service
