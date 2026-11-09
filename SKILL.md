@@ -16,6 +16,7 @@ Spring Boot + MyBatis lightweight REST framework. Annotation-based entity mappin
 - `@XColumn` is only needed for: primary keys, custom column names, or insert/update control. Regular fields auto-map via camelCase to snake_case.
 - `@XDefaultValue(value="X")` alone does NOT work — `isDBDefaultUsed` defaults to `true`, so the value is ignored. Must set `isDBDefaultUsed=false` for literal values.
 - `@XRestServiceScan` is required on the application class when using `@XRestService` declarative REST clients.
+- **HTTP CLIENT:** NEVER write `new RestTemplate()` (nor a hand-built `RestClient`/`WebClient`). A raw `new RestTemplate()` has no connection pooling, no timeouts, and bypasses the framework's error handling — always use the framework HTTP clients: `@XRestService` (declarative) or `XWebClient` (programmatic). The framework already exposes pooled, timeout-configured `RestTemplate`/`RestClient` beans via `XRestConfiguration`; the single sanctioned `new RestTemplate(...)` lives there and nowhere else. For synchronous calls, the current standard is Spring 6.1 `RestClient` (which `XWebClient` wraps), not `RestTemplate` and not reactive `WebClient`.
 - Session token format is NOT JWT — uses custom `Base64(payload).HmacSHA256(signature)`. Do not use JWT libraries.
 - JSON date format is `yyyy-MM-dd HH:mm:ss`, not ISO 8601.
 - `@XPaginationDefault` defaults: `page=1`, `size=10`, `direction=DESC`. Sort without direction defaults to ASC.
@@ -180,6 +181,8 @@ public class StripeErrorHandler implements XErrorResponseHandler {
 For full error propagation details and handler patterns, see `references/rest-client-and-auth.md`.
 
 ## REST Client Strategy
+
+> ⚠️ **Do NOT `new RestTemplate()`.** Raw instantiation loses pooling/timeouts and skips framework error handling; it also creates a new client per call. Use one of the framework clients below. The only legitimate `new RestTemplate(...)` in the codebase is the pooled singleton bean in `XRestConfiguration` — everything else must consume the injected client. `XWebClient` is backed by Spring 6.1 `RestClient` (the modern synchronous client), so there is no reason to reach for `RestTemplate` or reactive `WebClient` in consumer code.
 
 Two HTTP client options. Choose based on use case:
 
