@@ -11,9 +11,9 @@ import java.util.function.Supplier;
  * <p>결정 순서:
  * <ol>
  *   <li>{@code axim.mybatis.dialect} 설정 — {@link XDialectConfig} 가 기동 시 넣는다</li>
- *   <li>설정이 없으면 DataSource 메타데이터로 자동 감지 — 기동 시 {@link XDialectConfig},
- *       그때 실패했으면 첫 쿼리에서 {@code XResultInterceptor} 가 실제 커넥션으로 다시 감지</li>
- *   <li>감지 실패 → MySQL</li>
+ *   <li>설정이 없으면 첫 쿼리에서 {@code XResultInterceptor} 가 그 커넥션의
+ *       {@code DatabaseMetaData.getDatabaseProductName()} 으로 자동 감지</li>
+ *   <li>감지 실패(모르는 제품 포함) → MySQL</li>
  * </ol>
  *
  * <p>아직 정해지지 않았을 때 {@link #current()} 는 MySQL 을 돌려준다(결정으로 고정하지는 않는다).

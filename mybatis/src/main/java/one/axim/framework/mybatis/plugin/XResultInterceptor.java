@@ -243,8 +243,8 @@ public class XResultInterceptor implements Interceptor {
     }
 
     /**
-     * 기동 시 방언이 정해지지 않았으면(설정 없음 + DataSource 감지 실패) 지금 쓰는 커넥션으로
-     * 감지한다. 그래도 모르면 MySQL 로 고정. (v1.5.0)
+     * {@code axim.mybatis.dialect} 설정이 없으면 첫 쿼리에서 지금 쓰는 커넥션의 메타데이터로
+     * 방언을 감지한다. 모르는 DB 거나 실패하면 MySQL 로 고정. (v1.5.0)
      */
     private void resolveDialectIfAbsent(Invocation invocation) {
         if (XDialectHolder.isResolved()) {

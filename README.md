@@ -9,7 +9,7 @@ Spring Boot + MyBatis 기반의 경량 REST 프레임워크. 어노테이션 기
 - **Annotation-based Mapping** - `@XEntity`, `@XColumn`, `@XDefaultValue`로 테이블/컬럼 매핑
 - **Composite Primary Key** - 복합키 엔티티 지원 (키 클래스 기반 CRUD)
 - **Atomic Upsert** - `save()` 호출 시 `INSERT ... ON DUPLICATE KEY UPDATE`(PostgreSQL 은 `ON CONFLICT`)로 원자적 처리
-- **MySQL / PostgreSQL** - `axim.mybatis.dialect` 또는 DataSource 자동 감지 (v1.5.0)
+- **MySQL / PostgreSQL** - `axim.mybatis.dialect` 또는 커넥션 메타데이터 자동 감지 (v1.5.0)
 - **Selective Update** - `modify()`로 null이 아닌 필드만 UPDATE
 - **Pagination** - `XPagination` + `XPage<T>`로 페이지네이션, COUNT, 정렬 자동 처리
 - **REST Client Proxy** - `@XRestService` 선언형 HTTP 클라이언트 (OpenFeign 유사)
@@ -255,7 +255,7 @@ axim.rest.client.response-timeout=30
 axim.rest.session.secret-key=your-hmac-secret
 axim.rest.session.expire-days=7
 
-# MyBatis dialect (optional) — mysql | postgresql, 미지정 시 DataSource 자동 감지
+# MyBatis dialect (optional) — mysql | postgresql, 미지정 시 첫 쿼리에서 자동 감지
 axim.mybatis.dialect=postgresql
 ```
 
@@ -269,7 +269,7 @@ axim:
     dialect: postgresql   # mysql | postgresql
 ```
 
-- 설정하지 않으면 DataSource 의 `DatabaseMetaData.getDatabaseProductName()` 으로 **자동 감지**합니다. 기동 시 DB 에 붙지 못하면 첫 쿼리에서 다시 감지하고, 그래도 모르면 mysql 로 둡니다.
+- 설정하지 않으면 **첫 쿼리에서** 그 커넥션(DataSource)의 `DatabaseMetaData.getDatabaseProductName()` 으로 자동 감지하고, 모르는 DB 면 mysql 로 둡니다. 기동 중에는 DB 에 붙지 않습니다(1.4.x 와 같음). PostgreSQL 앱은 명시 설정을 권장합니다.
 - 잘못된 값(`postgre` 등)은 기동 시 예외로 막습니다.
 - PostgreSQL JDBC 드라이버(`org.postgresql:postgresql`)는 앱에서 추가하세요. 프레임워크는 `mysql-connector-j` 만 `runtimeOnly` 로 가져옵니다.
 - `mybatis-config.xml` 의 `XResultInterceptor` 플러그인 등록은 PostgreSQL 에서도 필수입니다(생성 키 회수를 여기서 처리).

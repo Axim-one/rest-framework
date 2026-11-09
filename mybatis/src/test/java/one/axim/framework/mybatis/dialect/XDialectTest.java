@@ -3,7 +3,6 @@ package one.axim.framework.mybatis.dialect;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.mock.env.MockEnvironment;
 
 import javax.sql.DataSource;
@@ -78,48 +77,39 @@ class XDialectTest {
     }
 
     @Test
-    @DisplayName("XDialectConfig: 명시 설정이 자동 감지보다 우선")
-    void explicitWinsOverDetection() {
-        new XDialectConfig(new MockEnvironment().withProperty("axim.mybatis.dialect", "postgresql"),
-                provider(dataSource("MySQL")));
-        assertEquals(XDialect.POSTGRESQL, XDialectHolder.current());
-    }
-
-    @Test
-    @DisplayName("XDialectConfig: 설정 없으면 DataSource 메타데이터로 감지")
-    void autoDetect() {
-        new XDialectConfig(new MockEnvironment(), provider(dataSource("PostgreSQL")));
+    @DisplayName("XDialectConfig: 명시 설정을 넣는다")
+    void explicitProperty() {
+        new XDialectConfig(new MockEnvironment().withProperty("axim.mybatis.dialect", "postgresql"));
         assertTrue(XDialectHolder.isResolved());
         assertEquals(XDialect.POSTGRESQL, XDialectHolder.current());
     }
 
     @Test
-    @DisplayName("XDialectConfig: 감지 실패(DB 다운 등)면 미결정으로 두고 current() 는 MySQL")
-    void detectionFailureLeavesUnresolved() {
-        new XDialectConfig(new MockEnvironment(), provider(failingDataSource()));
+    @DisplayName("XDialectConfig: 설정 없으면 미결정(이전 값도 지움) — 첫 쿼리에서 감지")
+    void noPropertyLeavesUnresolved() {
+        XDialectHolder.set(XDialect.POSTGRESQL);
+        new XDialectConfig(new MockEnvironment());
         assertFalse(XDialectHolder.isResolved());
         assertEquals(XDialect.MYSQL, XDialectHolder.current());
-
-        new XDialectConfig(new MockEnvironment(), provider(null));
-        assertFalse(XDialectHolder.isResolved());
     }
 
     @Test
     @DisplayName("XDialectConfig: 잘못된 설정값은 기동 실패")
     void invalidPropertyFailsFast() {
         assertThrows(IllegalArgumentException.class, () -> new XDialectConfig(
-                new MockEnvironment().withProperty("axim.mybatis.dialect", "postgre"), provider(null)));
+                new MockEnvironment().withProperty("axim.mybatis.dialect", "postgre")));
+    }
+
+    @Test
+    @DisplayName("커넥션 메타데이터 감지: PostgreSQL / MySQL / 모르는 DB / 실패")
+    void detectFromConnection() throws SQLException {
+        assertEquals(XDialect.POSTGRESQL, XDialect.detect(dataSource("PostgreSQL").getConnection()));
+        assertEquals(XDialect.MYSQL, XDialect.detect(dataSource("MySQL")));
+        assertNull(XDialect.detect(dataSource("H2")));
+        assertNull(XDialect.detect(failingDataSource()));
     }
 
     // ── stubs ──
-
-    private static org.springframework.beans.factory.ObjectProvider<DataSource> provider(DataSource ds) {
-        DefaultListableBeanFactory bf = new DefaultListableBeanFactory();
-        if (ds != null) {
-            bf.registerSingleton("dataSource", ds);
-        }
-        return bf.getBeanProvider(DataSource.class);
-    }
 
     private static DataSource dataSource(String productName) {
         DatabaseMetaData meta = proxy(DatabaseMetaData.class, (m, a) ->

@@ -56,8 +56,9 @@ abstract class AbstractDialectIntegrationTest {
     abstract XDialect expectedDialect();
 
     @Test
-    @DisplayName("방언이 기대값으로 정해진다")
+    @DisplayName("방언이 기대값으로 정해진다 (자동 감지는 첫 쿼리 후)")
     void dialectResolved() {
+        users.count();
         assertTrue(XDialectHolder.isResolved());
         assertEquals(expectedDialect(), XDialectHolder.current());
     }

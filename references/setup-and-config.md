@@ -35,7 +35,7 @@ spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 mybatis.config-location=classpath:mybatis-config.xml
 
 # -- Framework: MyBatis dialect (v1.5.0) --
-# axim.mybatis.dialect=postgresql                 # mysql | postgresql (default: auto-detect from DataSource, fallback mysql)
+# axim.mybatis.dialect=postgresql                 # mysql | postgresql (default: auto-detect on first query, fallback mysql)
 # PostgreSQL example:
 # spring.datasource.url=jdbc:postgresql://localhost:5432/mydb
 # spring.datasource.driver-class-name=org.postgresql.Driver

@@ -21,7 +21,7 @@ Spring Boot + MyBatis lightweight REST framework. Annotation-based entity mappin
 - `@XPaginationDefault` defaults: `page=1`, `size=10`, `direction=DESC`. Sort without direction defaults to ASC.
 - MANDATORY: Every member variable (Entity, DTO, Request, Response, VO) and every enum item MUST have a detailed Javadoc comment.
 - Always use `XPagination` and `XPage` for pagination. NEVER create custom pagination classes.
-- PostgreSQL: set `axim.mybatis.dialect=postgresql` (or rely on DataSource auto-detection). Repository/CRUD code is identical; custom `@Mapper` SQL must be written in PostgreSQL syntax. One DB type per application.
+- PostgreSQL: set `axim.mybatis.dialect=postgresql` (or rely on first-query auto-detection). Repository/CRUD code is identical; custom `@Mapper` SQL must be written in PostgreSQL syntax. One DB type per application.
 
 ## Installation
 
@@ -241,7 +241,7 @@ Default dialect is MySQL; SQL sent to MySQL is byte-identical to 1.4.x. For Post
 ```yaml
 axim:
   mybatis:
-    dialect: postgresql   # mysql | postgresql — omitted → auto-detect from DataSource metadata, fallback mysql
+    dialect: postgresql   # mysql | postgresql — omitted → auto-detected on the first query from connection metadata, fallback mysql
 ```
 
 - Add the `org.postgresql:postgresql` driver in the app. `XResultInterceptor` in `mybatis-config.xml` stays mandatory (it handles generated keys on PostgreSQL).

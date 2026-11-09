@@ -331,7 +331,7 @@ axim.rest.client.response-timeout=30
 axim.rest.session.secret-key=your-hmac-secret-key
 axim.rest.session.expire-days=7
 
-# MyBatis dialect (optional) — mysql | postgresql, 미지정 시 DataSource 자동 감지 (5.5 참고)
+# MyBatis dialect (optional) — mysql | postgresql, 미지정 시 첫 쿼리에서 자동 감지 (5.5 참고)
 # axim.mybatis.dialect=postgresql
 ```
 
@@ -381,7 +381,7 @@ axim:
     dialect: postgresql   # mysql | postgresql
 ```
 
-- 설정하지 않으면 DataSource 의 `DatabaseMetaData.getDatabaseProductName()` 으로 **자동 감지**합니다. 기동 시 DB 에 붙지 못하면 첫 쿼리에서 다시 감지하고, 그래도 모르면 mysql 로 둡니다.
+- 설정하지 않으면 **첫 쿼리에서** 그 커넥션(DataSource)의 `DatabaseMetaData.getDatabaseProductName()` 으로 자동 감지하고, 모르는 DB 면 mysql 로 둡니다. 기동 중에는 DB 에 붙지 않습니다(1.4.x 와 같음). PostgreSQL 앱은 명시 설정을 권장합니다.
 - 잘못된 값(`postgre` 등)은 기동 시 예외로 막습니다.
 - PostgreSQL JDBC 드라이버(`org.postgresql:postgresql`)는 앱에서 추가하세요. 프레임워크는 `mysql-connector-j` 만 `runtimeOnly` 로 가져옵니다.
 - `mybatis-config.xml` 의 `XResultInterceptor` 플러그인 등록은 PostgreSQL 에서도 필수입니다(생성 키 회수를 여기서 처리).
