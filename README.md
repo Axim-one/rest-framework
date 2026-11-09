@@ -159,7 +159,7 @@ public class MyApplication {
 
 | Method | Return | Description |
 |---|---|---|
-| `save(entity)` | `K` | PK null → INSERT, PK 존재 → Upsert (복합키: 모든 PK non-null → upsert) |
+| `save(entity)` | `K` | PK null → INSERT, PK 존재 → Upsert (복합키: 모든 PK non-null → upsert). 1.5.0 부터 자동증가 PK 값도 INSERT 에 포함되어 기존 행이 갱신된다(1.4.x 는 다른 unique 키가 없으면 새 행이 생기던 버그) |
 | `insert(entity)` | `K` | INSERT + auto-generated ID (복합키: 키 클래스 반환) |
 | `saveAll(List<T>)` | `K` | Batch INSERT (INSERT IGNORE) |
 | `update(entity)` | `int` | 전체 컬럼 UPDATE |

@@ -1,0 +1,407 @@
+### SnapUser.insert
+<script>
+INSERT INTO `users`
+<trim prefix="(" suffix=")" suffixOverrides=",">
+<if test="model.email != null">email,</if>
+<if test="model.displayName != null">display_name,</if>
+status,
+created_at,
+</trim>
+<trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+<if test="model.email != null">#{model.email},</if>
+<if test="model.displayName != null">#{model.displayName},</if>
+'ACTIVE',
+NOW(),
+</trim>
+</script>
+
+### SnapUser.insertAll
+<script>INSERT IGNORE INTO `users` (email, display_name, status, created_at) VALUES <foreach collection='model' item='item' separator=','>(#{item.email}, #{item.displayName}, 'ACTIVE', NOW())</foreach></script>
+
+### SnapUser.update
+UPDATE `users`
+SET id = #{model.id}, email = #{model.email}, display_name = #{model.displayName}, status = #{model.status}, created_at = #{model.createdAt}, updated_at = NOW(), login_count = #{model.loginCount}
+WHERE (id = #{model.id})
+
+### SnapUser.selectiveUpdate
+<script>
+UPDATE `users`
+<set>
+<if test="model.id != null">id = #{model.id},</if>
+<if test="model.email != null">email = #{model.email},</if>
+<if test="model.displayName != null">display_name = #{model.displayName},</if>
+<if test="model.status != null">status = #{model.status},</if>
+<if test="model.createdAt != null">created_at = #{model.createdAt},</if>
+updated_at = NOW(),
+<if test="model.loginCount != null">login_count = #{model.loginCount},</if>
+</set>
+WHERE id = #{model.id}
+</script>
+
+### SnapUser.findAll
+SELECT id, email, display_name, status, created_at, updated_at, login_count
+FROM `users`
+
+### SnapUser.count
+SELECT COUNT(*)
+FROM `users`
+
+### SnapUser.findOneBy
+SELECT id, email, display_name, status, created_at, updated_at, login_count
+FROM `users` LIMIT 1
+
+### SnapUser.upsert
+<script>
+INSERT INTO `users`
+<trim prefix="(" suffix=")" suffixOverrides=",">
+<if test="model.id != null">id,</if>
+<if test="model.email != null">email,</if>
+<if test="model.displayName != null">display_name,</if>
+status,
+created_at,
+</trim>
+<trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+<if test="model.id != null">#{model.id},</if>
+<if test="model.email != null">#{model.email},</if>
+<if test="model.displayName != null">#{model.displayName},</if>
+'ACTIVE',
+NOW(),
+</trim>
+ ON DUPLICATE KEY UPDATE id = #{model.id}, email = #{model.email}, display_name = #{model.displayName}, status = #{model.status}, created_at = #{model.createdAt}, updated_at = NOW(), login_count = #{model.loginCount}
+</script>
+
+### SnapUser.findById
+SELECT id, email, display_name, status, created_at, updated_at, login_count
+FROM `users`
+WHERE (id = #{where})
+
+### SnapUser.delete[key]
+DELETE FROM `users`
+WHERE (id = #{where})
+
+### SnapOrderItem.insert
+<script>
+INSERT INTO `shop`.`order_items`
+<trim prefix="(" suffix=")" suffixOverrides=",">
+<if test="model.orderId != null">order_id,</if>
+<if test="model.itemNo != null">item_no,</if>
+<if test="model.qty != null">qty,</if>
+<if test="model.createdBy != null">created_by,</if>
+</trim>
+<trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+<if test="model.orderId != null">#{model.orderId},</if>
+<if test="model.itemNo != null">#{model.itemNo},</if>
+<if test="model.qty != null">#{model.qty},</if>
+<if test="model.createdBy != null">#{model.createdBy},</if>
+</trim>
+</script>
+
+### SnapOrderItem.insertAll
+<script>INSERT IGNORE INTO `shop`.`order_items` (order_id, item_no, qty, created_by) VALUES <foreach collection='model' item='item' separator=','>(#{item.orderId}, #{item.itemNo}, #{item.qty}, #{item.createdBy})</foreach></script>
+
+### SnapOrderItem.update
+UPDATE `shop`.`order_items`
+SET order_id = #{model.orderId}, item_no = #{model.itemNo}, qty = #{model.qty}, memo_text = #{model.memo}
+WHERE (order_id = #{model.orderId} AND item_no = #{model.itemNo})
+
+### SnapOrderItem.selectiveUpdate
+<script>
+UPDATE `shop`.`order_items`
+<set>
+<if test="model.orderId != null">order_id = #{model.orderId},</if>
+<if test="model.itemNo != null">item_no = #{model.itemNo},</if>
+<if test="model.qty != null">qty = #{model.qty},</if>
+<if test="model.memo != null">memo_text = #{model.memo},</if>
+</set>
+WHERE order_id = #{model.orderId} AND item_no = #{model.itemNo}
+</script>
+
+### SnapOrderItem.findAll
+SELECT order_id, item_no, qty, created_by, memo_text
+FROM `shop`.`order_items`
+
+### SnapOrderItem.count
+SELECT COUNT(*)
+FROM `shop`.`order_items`
+
+### SnapOrderItem.findOneBy
+SELECT order_id, item_no, qty, created_by, memo_text
+FROM `shop`.`order_items` LIMIT 1
+
+### SnapOrderItem.upsert
+<script>
+INSERT INTO `shop`.`order_items`
+<trim prefix="(" suffix=")" suffixOverrides=",">
+<if test="model.orderId != null">order_id,</if>
+<if test="model.itemNo != null">item_no,</if>
+<if test="model.qty != null">qty,</if>
+<if test="model.createdBy != null">created_by,</if>
+</trim>
+<trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+<if test="model.orderId != null">#{model.orderId},</if>
+<if test="model.itemNo != null">#{model.itemNo},</if>
+<if test="model.qty != null">#{model.qty},</if>
+<if test="model.createdBy != null">#{model.createdBy},</if>
+</trim>
+ ON DUPLICATE KEY UPDATE order_id = #{model.orderId}, item_no = #{model.itemNo}, qty = #{model.qty}, memo_text = #{model.memo}
+</script>
+
+### SnapOrderItem.findById
+SELECT order_id, item_no, qty, created_by, memo_text
+FROM `shop`.`order_items`
+WHERE (order_id = #{where.orderId} AND item_no = #{where.itemNo})
+
+### SnapOrderItem.delete[key]
+DELETE FROM `shop`.`order_items`
+WHERE (order_id = #{where.orderId} AND item_no = #{where.itemNo})
+
+### SnapCode.insert
+<script>
+INSERT INTO `codes`
+<trim prefix="(" suffix=")" suffixOverrides=",">
+<if test="model.code != null">code,</if>
+<if test="model.label != null">label,</if>
+</trim>
+<trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+<if test="model.code != null">#{model.code},</if>
+<if test="model.label != null">#{model.label},</if>
+</trim>
+</script>
+
+### SnapCode.insertAll
+<script>INSERT IGNORE INTO `codes` (code, label) VALUES <foreach collection='model' item='item' separator=','>(#{item.code}, #{item.label})</foreach></script>
+
+### SnapCode.update
+UPDATE `codes`
+SET code = #{model.code}, label = #{model.label}
+WHERE (code = #{model.code})
+
+### SnapCode.selectiveUpdate
+<script>
+UPDATE `codes`
+<set>
+<if test="model.code != null">code = #{model.code},</if>
+<if test="model.label != null">label = #{model.label},</if>
+</set>
+WHERE code = #{model.code}
+</script>
+
+### SnapCode.findAll
+SELECT code, label
+FROM `codes`
+
+### SnapCode.count
+SELECT COUNT(*)
+FROM `codes`
+
+### SnapCode.findOneBy
+SELECT code, label
+FROM `codes` LIMIT 1
+
+### SnapCode.upsert
+<script>
+INSERT INTO `codes`
+<trim prefix="(" suffix=")" suffixOverrides=",">
+<if test="model.code != null">code,</if>
+<if test="model.label != null">label,</if>
+</trim>
+<trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+<if test="model.code != null">#{model.code},</if>
+<if test="model.label != null">#{model.label},</if>
+</trim>
+ ON DUPLICATE KEY UPDATE code = #{model.code}, label = #{model.label}
+</script>
+
+### SnapCode.findById
+SELECT code, label
+FROM `codes`
+WHERE (code = #{where})
+
+### SnapCode.delete[key]
+DELETE FROM `codes`
+WHERE (code = #{where})
+
+### SnapChild.insert
+<script>
+INSERT INTO `app`.`child_rows`
+<trim prefix="(" suffix=")" suffixOverrides=",">
+<if test="model.title != null">title,</if>
+quoted,
+modified_at,
+</trim>
+<trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+<if test="model.title != null">#{model.title},</if>
+'it''s',
+CURRENT_TIMESTAMP,
+</trim>
+</script>
+
+### SnapChild.insertAll
+<script>INSERT IGNORE INTO `app`.`child_rows` (title, quoted, modified_at) VALUES <foreach collection='model' item='item' separator=','>(#{item.title}, 'it''s', CURRENT_TIMESTAMP)</foreach></script>
+
+### SnapChild.update
+UPDATE `app`.`child_rows`
+SET title = #{model.title}, quoted = 'it''s', id = #{model.id}, modified_at = CURRENT_TIMESTAMP
+WHERE (id = #{model.id})
+
+### SnapChild.selectiveUpdate
+<script>
+UPDATE `app`.`child_rows`
+<set>
+<if test="model.title != null">title = #{model.title},</if>
+quoted = 'it''s',
+<if test="model.id != null">id = #{model.id},</if>
+modified_at = CURRENT_TIMESTAMP,
+</set>
+WHERE id = #{model.id}
+</script>
+
+### SnapChild.findAll
+SELECT title, quoted, id, modified_at
+FROM `app`.`child_rows`
+
+### SnapChild.count
+SELECT COUNT(*)
+FROM `app`.`child_rows`
+
+### SnapChild.findOneBy
+SELECT title, quoted, id, modified_at
+FROM `app`.`child_rows` LIMIT 1
+
+### SnapChild.upsert
+<script>
+INSERT INTO `app`.`child_rows`
+<trim prefix="(" suffix=")" suffixOverrides=",">
+<if test="model.title != null">title,</if>
+quoted,
+<if test="model.id != null">id,</if>
+modified_at,
+</trim>
+<trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+<if test="model.title != null">#{model.title},</if>
+'it''s',
+<if test="model.id != null">#{model.id},</if>
+CURRENT_TIMESTAMP,
+</trim>
+ ON DUPLICATE KEY UPDATE title = #{model.title}, quoted = 'it''s', id = #{model.id}, modified_at = CURRENT_TIMESTAMP
+</script>
+
+### SnapChild.findById
+SELECT title, quoted, id, modified_at
+FROM `app`.`child_rows`
+WHERE (id = #{where})
+
+### SnapChild.delete[key]
+DELETE FROM `app`.`child_rows`
+WHERE (id = #{where})
+
+### SnapUser.findAll[where]
+SELECT id, email, display_name, status, created_at, updated_at, login_count
+FROM `users`
+WHERE (email = #{where.email} AND status = #{where.status})
+
+### SnapUser.findWhere[where1]
+SELECT id, email, display_name, status, created_at, updated_at, login_count
+FROM `users`
+WHERE (email = #{where.email})
+
+### SnapUser.findWhere[where2]
+SELECT id, email, display_name, status, created_at, updated_at, login_count
+FROM `users`
+WHERE (status = #{where.status} AND display_name = #{where.displayName})
+
+### SnapUser.count[where]
+SELECT COUNT(*)
+FROM `users`
+WHERE (status = #{where.status})
+
+### SnapUser.findOneBy[where]
+SELECT id, email, display_name, status, created_at, updated_at, login_count
+FROM `users`
+WHERE (email = #{where.email}) LIMIT 1
+
+### SnapUser.update[where]
+UPDATE `users`
+SET id = #{model.id}, email = #{model.email}, display_name = #{model.displayName}, status = #{model.status}, created_at = #{model.createdAt}, updated_at = NOW(), login_count = #{model.loginCount}
+WHERE (email = #{where.email})
+
+### SnapUser.selectiveUpdate[where]
+<script>
+UPDATE `users`
+<set>
+<if test="model.id != null">id = #{model.id},</if>
+<if test="model.email != null">email = #{model.email},</if>
+<if test="model.displayName != null">display_name = #{model.displayName},</if>
+<if test="model.status != null">status = #{model.status},</if>
+<if test="model.createdAt != null">created_at = #{model.createdAt},</if>
+updated_at = NOW(),
+<if test="model.loginCount != null">login_count = #{model.loginCount},</if>
+</set>
+WHERE email = #{where.email} AND status = #{where.status}
+</script>
+
+### SnapUser.delete[where]
+DELETE FROM `users`
+WHERE (email = #{where.email} AND status = #{where.status})
+
+### SnapOrderItem.findWhere[where]
+SELECT order_id, item_no, qty, created_by, memo_text
+FROM `shop`.`order_items`
+WHERE (order_id = #{where.orderId} AND memo_text = #{where.memo})
+
+### SnapOrderItem.delete[where]
+DELETE FROM `shop`.`order_items`
+WHERE (order_id = #{where.orderId})
+
+### SnapOrderItem.count[where]
+SELECT COUNT(*)
+FROM `shop`.`order_items`
+WHERE (order_id = #{where.orderId} AND item_no = #{where.itemNo})
+
+### SnapChild.findAll[where]
+SELECT title, quoted, id, modified_at
+FROM `app`.`child_rows`
+WHERE (title = #{where.title})
+
+### SnapCode.selectiveUpdate[where]
+<script>
+UPDATE `codes`
+<set>
+<if test="model.code != null">code = #{model.code},</if>
+<if test="model.label != null">label = #{model.label},</if>
+</set>
+WHERE label = #{where.label}
+</script>
+
+### SnapUser.findAll[where+pagination]
+SELECT id, email, display_name, status, created_at, updated_at, login_count
+FROM `users`
+WHERE (status = #{where.status})
+
+### limit[null]
+
+
+### limit[page1,size20]
+ LIMIT 20
+
+### limit[page3,size20]
+ LIMIT 40, 20
+
+### limit[page2,size50000]
+ LIMIT 50000, 10000
+
+### limit[size0,offset0]
+
+
+### limit[page0,size15,offset45]
+ LIMIT 45, 15
+
+### limit[size-5,offset-3]
+ LIMIT 1
+
+### orderBy[two]
+ ORDER BY created_at DESC, id ASC
+
+### rawQuery[pagination]
+SELECT * FROM t WHERE a = 1   ORDER BY created_at DESC, id ASC LIMIT 75, 25
+

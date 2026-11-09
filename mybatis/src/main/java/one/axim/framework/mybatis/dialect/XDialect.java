@@ -54,11 +54,6 @@ public enum XDialect {
         public boolean usesJdbcGeneratedKeys() {
             return false;
         }
-
-        @Override
-        public boolean upsertInsertsAutoIncrementKey() {
-            return false;
-        }
     },
 
     POSTGRESQL {
@@ -106,15 +101,6 @@ public enum XDialect {
         public boolean usesJdbcGeneratedKeys() {
             return true;
         }
-
-        /**
-         * {@code ON CONFLICT (pk)} 는 INSERT 에 PK 값이 있어야 충돌한다. 자동증가 PK 를 빼면
-         * 시퀀스로 새 PK 가 생겨 갱신 대신 새 행이 된다(다른 unique 가 있으면 그쪽 위반 오류).
-         */
-        @Override
-        public boolean upsertInsertsAutoIncrementKey() {
-            return true;
-        }
     };
 
     /** 테이블/스키마 식별자를 방언의 따옴표로 감싼다. */
@@ -137,12 +123,6 @@ public enum XDialect {
      * false 면 {@code SELECT LAST_INSERT_ID()} (MySQL, 기존 경로).
      */
     public abstract boolean usesJdbcGeneratedKeys();
-
-    /**
-     * upsert 의 INSERT 컬럼에 자동증가 PK 를 넣는지 ({@code save()} 는 PK 가 다 채워졌을 때만 upsert 한다).
-     * MySQL 은 1.4.2 출력 유지를 위해 넣지 않는다 — {@code ON DUPLICATE KEY} 는 아무 unique 키에나 걸린다.
-     */
-    public abstract boolean upsertInsertsAutoIncrementKey();
 
     /** {@code schema.table} 또는 {@code table} 을 방언 따옴표로 감싸 돌려준다. */
     public String qualifiedTableName(String schema, String table) {

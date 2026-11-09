@@ -30,20 +30,32 @@ import java.util.function.BiFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * MySQL SQL 출력 회귀 고정 (v1.5.0 방언 도입 전 1.4.2 출력으로 작성).
  *
  * <p>{@code snapshot/mysql-1.4.2.txt} 는 1.4.2 코드(main 0127363)로 생성한 뒤 손대지 않는다.
- * 이 테스트가 깨지면 MySQL 소비자(cryptoments, TORQ)가 받는 SQL 이 바뀐 것이다.
+ * 1.5.0 은 save() 버그 수정으로 자동증가 PK 엔티티의 upsert 에만 PK 줄이 추가됐고,
+ * {@link #ALLOWED_DIFF_FROM_142} 외의 차이가 생기면 MySQL 소비자(cryptoments, TORQ)가 받는 SQL 이 바뀐 것이다.
  *
  * <p>스냅샷 재생성(의도된 변경일 때만): {@code ./gradlew :mybatis:test -Psnapshot.write=<디렉터리>}.
- * {@code mysql-1.4.2.txt} 는 재생성하지 않는다 — 바뀌었다면 MySQL 회귀다.
+ * {@code mysql-1.4.2.txt} 는 재생성하지 않는다.
  */
 class CrudSqlSnapshotTest {
 
-    static final String SNAPSHOT = "/snapshot/mysql-1.4.2.txt";
+    /** 1.4.2(main 0127363) 출력 — 역사 기록. 재생성하지 않는다. */
+    static final String SNAPSHOT_142 = "/snapshot/mysql-1.4.2.txt";
+    static final String SNAPSHOT = "/snapshot/mysql-1.5.0.txt";
     static final String PG_SNAPSHOT = "/snapshot/postgresql-1.5.0.txt";
+
+    /**
+     * 1.4.2 대비 MySQL 출력에서 바뀌어도 되는 유일한 부분 (v1.5.0 save() 버그 수정):
+     * 자동증가 PK 엔티티의 upsert 에 PK 컬럼/값 줄이 추가된다. 그 외 섹션·줄은 1.4.2 와 같아야 한다.
+     */
+    static final Map<String, List<String>> ALLOWED_DIFF_FROM_142 = Map.of(
+            "SnapUser.upsert", List.of("<if test=\"model.id != null\">id,</if>", "<if test=\"model.id != null\">#{model.id},</if>"),
+            "SnapChild.upsert", List.of("<if test=\"model.id != null\">id,</if>", "<if test=\"model.id != null\">#{model.id},</if>"));
 
     /** 방언 미지정 상태의 전체 출력. */
     static String render() {
@@ -118,16 +130,39 @@ class CrudSqlSnapshotTest {
     }
 
     @Test
-    @DisplayName("방언 미지정: CrudSqlProvider 전 메서드 · limit() 출력이 1.4.2 와 문자열 동일")
-    void mysqlOutputIsByteIdenticalTo142() throws IOException {
+    @DisplayName("방언 미지정: MySQL 출력 고정")
+    void mysqlOutputMatchesSnapshot() throws IOException {
         assertSnapshot(SNAPSHOT, render());
     }
 
     @Test
-    @DisplayName("mysql 명시: 미지정과 같은 출력 (1.4.2)")
-    void explicitMysqlIsByteIdenticalTo142() throws IOException {
+    @DisplayName("mysql 명시: 미지정과 같은 출력")
+    void explicitMysqlMatchesSnapshot() throws IOException {
         XDialectHolder.set(XDialect.MYSQL);
         assertSnapshot(SNAPSHOT, render());
+    }
+
+    @Test
+    @DisplayName("1.4.2 대비 MySQL 변경은 자동증가 PK upsert 의 PK 줄 추가뿐")
+    void mysqlDiffFrom142IsOnlyUpsertAutoIncrementPk() throws IOException {
+        Map<String, String> before = sections(readResource(SNAPSHOT_142));
+        Map<String, String> now = sections(render());
+        assertEquals(before.keySet(), now.keySet(), "섹션 목록이 같아야 한다");
+
+        for (Map.Entry<String, String> e : before.entrySet()) {
+            String name = e.getKey();
+            String current = now.get(name);
+            List<String> allowed = ALLOWED_DIFF_FROM_142.get(name);
+            if (allowed == null) {
+                assertEquals(e.getValue(), current, name + " 는 1.4.2 와 같아야 한다");
+                continue;
+            }
+            List<String> added = new java.util.ArrayList<>(List.of(current.split("\n", -1)));
+            for (String line : allowed) {
+                assertTrue(added.remove(line), name + " 에 추가돼야 할 줄이 없다: " + line);
+            }
+            assertEquals(e.getValue(), String.join("\n", added), name + " 는 허용된 줄 외에 1.4.2 와 같아야 한다");
+        }
     }
 
     @Test
@@ -144,11 +179,27 @@ class CrudSqlSnapshotTest {
                     actual, StandardCharsets.UTF_8);
         }
 
+        assertEquals(readResource(resource), actual);
+    }
+
+    private static String readResource(String resource) throws IOException {
         try (InputStream in = CrudSqlSnapshotTest.class.getResourceAsStream(resource)) {
             assertNotNull(in, "snapshot missing: " + resource);
-            String expected = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            assertEquals(expected, actual);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    /** "### name" 헤더로 나눈 섹션 (순서 유지). */
+    private static Map<String, String> sections(String text) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String chunk : text.split("(?m)^### ")) {
+            if (chunk.isEmpty()) {
+                continue;
+            }
+            int nl = chunk.indexOf('\n');
+            out.put(chunk.substring(0, nl), chunk.substring(nl + 1));
+        }
+        return out;
     }
 
     // ── helpers ──

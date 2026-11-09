@@ -376,7 +376,7 @@ public class CrudSqlProvider {
         XDialect dialect = XDialectHolder.current();
 
         List<ColumnMetadata> insertColumns = metadata.getInsertableColumns().stream()
-                .filter(c -> !c.isAutoIncrement() || (dialect.upsertInsertsAutoIncrementKey() && c.isPrimaryKey()))
+                .filter(c -> !c.isAutoIncrement() || c.isPrimaryKey())
                 .filter(c -> !(c.isDBDefaultUsed() && c.resolveInsertValue() == null))
                 .toList();
 
@@ -387,7 +387,9 @@ public class CrudSqlProvider {
                 })
                 .collect(Collectors.joining(", "));
 
-        // INSERT 부분 — null 필드 동적 스킵
+        // INSERT 부분 — null 필드 동적 스킵.
+        // 자동증가 PK 도 넣는다(save() 는 PK 가 다 채워졌을 때만 upsert 한다). 빼면 DB 가 새 PK 를 만들어
+        // 충돌이 안 나고 갱신 대신 새 행이 생긴다 — 1.4.2 MySQL 버그(다른 unique 키가 없는 테이블). v1.5.0
         StringBuilder sb = new StringBuilder("<script>\nINSERT INTO ");
         sb.append(metadata.getTableName()).append("\n");
 

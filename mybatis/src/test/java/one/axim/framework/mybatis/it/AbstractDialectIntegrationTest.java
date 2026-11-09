@@ -126,6 +126,19 @@ abstract class AbstractDialectIntegrationTest {
     }
 
     @Test
+    @DisplayName("save: 자동증가 PK 를 채워 save → 다른 unique 가 없어도 새 행이 아니라 갱신 (1.4.2 MySQL 버그)")
+    void saveExistingAutoIncrementWithoutOtherUnique() {
+        Integer id = products.insert(ItProduct.of("pen", 100, true));
+        ItProduct loaded = products.findOne(id);
+        loaded.setPrice(999);
+
+        assertEquals(id, products.save(loaded));
+
+        assertEquals(1, products.count(), "새 행이 생기면 안 된다");
+        assertEquals(999, products.findOne(id).getPrice());
+    }
+
+    @Test
     @DisplayName("save: 지정 PK 신규 → insert, 같은 PK 다시 → 갱신")
     void saveAssignedPk() {
         assertEquals("A", codes.save(ItCode.of("A", "alpha", 1)));
