@@ -329,7 +329,7 @@ axim.rest.client.response-timeout=30
 
 # Framework Session (optional)
 axim.rest.session.secret-key=your-hmac-secret-key
-axim.rest.session.expire-days=7
+axim.rest.session.token-expire-days=7
 
 # MyBatis dialect (optional) — mysql | postgresql, 미지정 시 첫 쿼리에서 자동 감지 (5.5 참고)
 # axim.mybatis.dialect=postgresql

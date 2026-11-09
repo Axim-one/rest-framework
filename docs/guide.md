@@ -1032,7 +1032,7 @@ public class ExternalApiService {
 
 ### Option 2: Programmatic via XWebClientFactory
 
-Use `XWebClientFactory` to create clients dynamically. Each `create()` returns a **new instance** (v1.5.0) — keep it in a field and reuse it; the connection pool lives in the shared `RestClient`:
+Use `XWebClientFactory` to create clients dynamically. Each `create()` returns a **new `XWebClient`** (v1.5.0), so `errorHandler(...)` set on one does not leak to others. Calling it per request is cheap — the base-URL-bound `RestClient` and its connection pool are cached:
 
 ```java
 @Service

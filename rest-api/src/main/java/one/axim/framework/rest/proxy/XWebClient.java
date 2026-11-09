@@ -27,7 +27,7 @@ public class XWebClient {
     private static final ObjectMapper OBJECT_MAPPER = createObjectMapper();
 
     private final RestClient restClient;
-    /** 연결 실패 예외에 싣는 대상 정보 (v1.5.0). {@link #XWebClient(RestClient)} 로 만들면 null. */
+    /** 연결 실패 예외의 remoteServiceName (v1.5.0). {@link #XWebClient(RestClient)} 로 만들면 null. */
     private final String baseUrl;
     private boolean isDebug = false;
     private XErrorResponseHandler errorHandler;
@@ -38,9 +38,12 @@ public class XWebClient {
     }
 
     public XWebClient(RestClient restClient, String baseUrl) {
-        this.restClient = restClient.mutate()
-                .baseUrl(baseUrl)
-                .build();
+        this(restClient.mutate().baseUrl(baseUrl).build(), baseUrl, true);
+    }
+
+    /** baseUrl 이 이미 적용된 RestClient 로 만든다 ({@link XWebClientFactory} 용). */
+    XWebClient(RestClient baseUrlBoundClient, String baseUrl, boolean alreadyBound) {
+        this.restClient = baseUrlBoundClient;
         this.baseUrl = baseUrl;
     }
 
@@ -195,11 +198,15 @@ public class XWebClient {
     // Error handling
     // ──────────────────────────────────────────
 
-    /** XRestClient 와 같이 대상 정보를 description 에 싣는다 (v1.5.0). */
+    /**
+     * 연결 실패 예외. 대상 baseUrl 은 {@code remoteServiceName} 에 싣는다 (v1.5.0) — {@code @JsonIgnore} 라
+     * API 응답으로 나가지 않는다. {@code description} 은 {@code ApiError} 로 호출자에게 그대로 노출되므로
+     * 내부 호스트명을 넣지 않고 1.4.x 처럼 비워 둔다.
+     */
     private UnavailableServerException unavailable() {
-        return baseUrl != null
-                ? new UnavailableServerException(UnavailableServerException.UNAVAILABLE_SERVICE, baseUrl)
-                : new UnavailableServerException(UnavailableServerException.UNAVAILABLE_SERVICE);
+        UnavailableServerException e = new UnavailableServerException(UnavailableServerException.UNAVAILABLE_SERVICE);
+        e.setRemoteServiceName(baseUrl);
+        return e;
     }
 
     private void handleErrorResponse(org.springframework.http.HttpStatusCode statusCode, InputStream body) throws IOException {

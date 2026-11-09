@@ -253,11 +253,13 @@ axim.rest.client.response-timeout=30
 
 # Session (rest-api module, optional)
 axim.rest.session.secret-key=your-hmac-secret
-axim.rest.session.expire-days=7
+axim.rest.session.token-expire-days=7
 
 # MyBatis dialect (optional) — mysql | postgresql, 미지정 시 첫 쿼리에서 자동 감지
 axim.mybatis.dialect=postgresql
 ```
+
+> 1.3.x · 1.4.x 에서 올리는 경우: [`docs/UPGRADE-1.5.md`](docs/UPGRADE-1.5.md)
 
 ## PostgreSQL (v1.5.0)
 

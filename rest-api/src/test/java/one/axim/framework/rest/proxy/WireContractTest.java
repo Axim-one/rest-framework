@@ -246,10 +246,16 @@ class WireContractTest {
     }
 
     @Test
-    @DisplayName("XWebClient 연결 실패 예외에 baseUrl 이 실린다")
-    void unavailableCarriesBaseUrl() {
+    @DisplayName("XWebClient 연결 실패: baseUrl 은 remoteServiceName(@JsonIgnore)에, description 은 1.4.x 처럼 비움 — 내부 호스트가 API 응답으로 새지 않는다")
+    void unavailableCarriesBaseUrlWithoutLeaking() {
         XWebClient client = XWebClient.create("http://127.0.0.1:1");
         UnavailableServerException e = assertThrows(UnavailableServerException.class, () -> client.get("/x", Map.class));
-        assertEquals("http://127.0.0.1:1", e.getDescription());
+        assertEquals("http://127.0.0.1:1", e.getRemoteServiceName());
+        assertEquals(null, e.getDescription());
+
+        XWebClientFactory factory = new XWebClientFactory(RestClient.create(), false);
+        UnavailableServerException viaFactory = assertThrows(UnavailableServerException.class,
+                () -> factory.create("http://127.0.0.1:1").get("/x", Map.class));
+        assertEquals("http://127.0.0.1:1", viaFactory.getRemoteServiceName());
     }
 }

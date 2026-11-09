@@ -216,7 +216,7 @@ public class ExternalApiService {
 }
 ```
 
-> `XWebClientFactory.create()` returns a **new instance** on every call (v1.5.0), so `create(url).errorHandler(...)` only affects that instance. Keep the client in a field and reuse it; the connection pool lives in the shared `RestClient`. (1.4.x cached one instance per base URL and `errorHandler(...)` mutated it for every caller.)
+> `XWebClientFactory.create()` returns a **new `XWebClient`** on every call (v1.5.0), so `create(url).errorHandler(...)` only affects that instance. Calling `create()` per request is still cheap — the base-URL-bound `RestClient` is cached and the connection pool is shared. (1.4.x returned one shared instance per base URL, and `errorHandler(...)` changed it for every caller.)
 
 ### API Reference
 
